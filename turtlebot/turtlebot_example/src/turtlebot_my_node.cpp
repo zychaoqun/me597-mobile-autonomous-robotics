@@ -14,6 +14,7 @@
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <tf/transform_datatypes.h>
+#include <nav_msgs/Odometry.h>
 
 #define STATE_INIT          0
 #define STATE_GO_STRAIGHT   1
@@ -23,7 +24,7 @@
 double yaw, x, y;
 
 //Callback function for the Position topic 
-void pose_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
+void pose_callback(const nav_msgs::Odometry& msg)
 {
     //This function is called when a new pose message is received
 
@@ -31,11 +32,15 @@ void pose_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
     double Y = msg.pose.pose.position.y; // Robot Y psotition
     double Yaw = tf::getYaw(msg.pose.pose.orientation); // Robot Yaw
 
-    yaw = Yaw + M_PI;
+    yaw = Yaw;
+
+    if (yaw < 0) {
+        yaw += 2 * M_PI;
+    }
     x = X;
     y = Y;
 
-    ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", x, y, yaw);
+    ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", x, y, yaw * 180.0 / M_PI);
 }
 
 
@@ -52,7 +57,7 @@ int main(int argc, char **argv)
     }
 
     //Subscribe to the desired topics and assign callbacks
-    ros::Subscriber pose_sub = n.subscribe("/amcl_pose", 1, pose_callback);
+    ros::Subscriber pose_sub = n.subscribe("/odom", 1, pose_callback);
 
     //Setup topics to Publish from this node
     ros::Publisher velocity_publisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
@@ -67,8 +72,8 @@ int main(int argc, char **argv)
     double target_yaw, init_x, init_y, dist, err_curr = 0, err_prev = 0;
     double w = 0, v = 0;
     const double SPEED = 0.05;
-    const double SQ_DIST = 0.4;
-    const double P_CONST = 0.1;
+    const double SQ_DIST = 1;
+    const double P_CONST = 0.05;
     
     while (ros::ok())
     {
@@ -86,25 +91,27 @@ int main(int argc, char **argv)
             dist = sqrt((x - init_x) * (x - init_x) + (y - init_y) * (y - init_y));
 
             if (dist > SQ_DIST) {
-                target_yaw += M_PI / 4;
+                target_yaw += M_PI / 2;
 
-                if (target_yaw > M_PI) {
-                    target_yaw -= M_PI;
+                if (target_yaw > 2 * M_PI) {
+                     target_yaw -= 2 * M_PI;
                 }
 
                 v = 0;
 
                 state = STATE_TURN;
+
             } else {
                 v = SPEED;
             }
 
-            ROS_DEBUG("Main - Target: dist=%f, yaw=%f", dist, target_yaw);
+            ROS_WARN("Main - Target: dist=%f, yaw=%f", dist, target_yaw * 180.0 / M_PI);
         }
 
 
         if (state == STATE_TURN) {
             err_prev = err_curr;
+
             err_curr = target_yaw - yaw;
 
             if (fabs(err_prev - err_curr) < 0.01 && fabs(err_curr) < 0.05) {
@@ -116,7 +123,7 @@ int main(int argc, char **argv)
                 w = err_curr * P_CONST;
             }
 
-            ROS_DEBUG("Main - Target: dist=%f, yaw=%f, delta=%f", dist, target_yaw, fabs(err_prev - err_curr));
+            ROS_ERROR("Main - Target: dist=%f, yaw=%f, delta=%f", dist, target_yaw * 180.0 / M_PI, fabs(err_prev - err_curr));
         }
 
         //Main loop code goes here:
