@@ -10,6 +10,7 @@
 // //////////////////////////////////////////////////////////
 
 #include <ros/ros.h>
+#include <ros/console.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <tf/transform_datatypes.h>
@@ -26,13 +27,17 @@ void pose_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
 	ROS_DEBUG("pose_callback X: %f Y: %f Yaw: %f", X, Y, Yaw);
 }
 
-
-
 int main(int argc, char **argv)
 {
 	//Initialize the ROS framework
 	ros::init(argc,argv,"main_control");
 	ros::NodeHandle n;
+
+    // change log level
+    if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug) ) {
+        ros::console::notifyLoggerLevelsChanged();
+    }
+
 
 	//Subscribe to the desired topics and assign callbacks
 	ros::Subscriber pose_sub = n.subscribe("/amcl_pose", 1, pose_callback);
@@ -56,8 +61,8 @@ int main(int argc, char **argv)
 		vel.angular.z = 0.2; // set angular speed
 
 		velocity_publisher.publish(vel); // Publish the command velocity
-		ROS_DEBUG("Main - Velocity commands: v - %f, w - %f", vel.linear.x, vel.angular.z);
- 
+		ROS_DEBUG(":Main - Velocity commands: v - %f, w - %f\n", vel.linear.x, vel.angular.z);
+
 	}
 
 	return 0;
