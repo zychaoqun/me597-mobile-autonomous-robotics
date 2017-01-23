@@ -72,6 +72,7 @@ int main(int argc, char **argv)
     double target_yaw, init_x, init_y, dist, err_curr = 0, err_prev = 0;
     double w = 0, v = 0;
     const double SPEED = 0.05;
+    const double ROT = 0.03;
     const double SQ_DIST = 1;
     const double P_CONST = 0.05;
     
@@ -110,17 +111,26 @@ int main(int argc, char **argv)
 
 
         if (state == STATE_TURN) {
-            err_prev = err_curr;
+            // err_prev = err_curr;
 
-            err_curr = target_yaw - yaw;
+            // err_curr = target_yaw - yaw;
 
-            if (fabs(err_prev - err_curr) < 0.01 && fabs(err_curr) < 0.05) {
+            // if (fabs(err_prev - err_curr) < 0.01 && fabs(err_curr) < 0.05) {
+            //     state = STATE_GO_STRAIGHT;
+            //     init_x = x;
+            //     init_y = y;
+            //     w = 0;
+            // } else {
+            //     w = err_curr * P_CONST;
+            // }
+
+            if (fabs(target_yaw - yaw) < 0.05){
                 state = STATE_GO_STRAIGHT;
                 init_x = x;
                 init_y = y;
                 w = 0;
             } else {
-                w = err_curr * P_CONST;
+                w = ROT;
             }
 
             ROS_ERROR("Main - Target: dist=%f, yaw=%f, delta=%f", dist, target_yaw * 180.0 / M_PI, fabs(err_prev - err_curr));
