@@ -71,9 +71,9 @@ int main(int argc, char **argv)
     int state = STATE_INIT;
     double target_yaw, init_x, init_y, dist, err_curr = 0, err_prev = 0;
     double w = 0, v = 0;
-    const double SPEED = 0.05;
-    const double ROT = 0.03;
-    const double SQ_DIST = 1;
+    const double SPEED = 0.1;
+    const double ROT = 0.15;
+    const double SQ_DIST = 0.45;
     const double P_CONST = 0.05;
     
     while (ros::ok())
@@ -124,7 +124,7 @@ int main(int argc, char **argv)
             //     w = err_curr * P_CONST;
             // }
 
-            if (fabs(target_yaw - yaw) < 0.05){
+            if ((target_yaw > yaw) && fabs(yaw - target_yaw) < 0.03){
                 state = STATE_GO_STRAIGHT;
                 init_x = x;
                 init_y = y;
