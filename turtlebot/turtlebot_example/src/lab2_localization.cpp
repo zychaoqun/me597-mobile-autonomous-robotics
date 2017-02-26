@@ -31,11 +31,7 @@ double ips_yaw;
 double ips_x0;
 double ips_y0;
 bool is_initialized;
-bool new_pose = false;
-sensor_msgs::LaserScan scan;
 
-
-short sgn(int x) { return x >= 0 ? 1 : -1; }
 
 //Callback function for the Position topic (SIMULATION)
 void pose_callback(const gazebo_msgs::ModelStates& msg) 
@@ -53,8 +49,6 @@ void pose_callback(const gazebo_msgs::ModelStates& msg)
         ips_x0 = ips_x;
         ips_y0 = ips_y;
     }
-
-    new_pose = true;
 }
 
 //Callback function for the Position topic (LIVE)
@@ -68,51 +62,6 @@ void pose_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
 	ROS_DEBUG("pose_callback X: %f Y: %f Yaw: %f", X, Y, Yaw);
 }*/
 
-//Callback function for the Position topic (SIMULATION)
-void laser_callback(const sensor_msgs::LaserScan& msg) 
-{
-    scan = msg;
-}
-
-//Bresenham line algorithm (pass empty vectors)
-// Usage: (x0, y0) is the first point and (x1, y1) is the second point. The calculated
-//        points (x, y) are stored in the x and y vector. x and y should be empty 
-//	  vectors of integers and shold be defined where this function is called from.
-void bresenham(int x0, int y0, int x1, int y1, std::vector<int>& x, std::vector<int>& y) {
-
-    int dx = abs(x1 - x0);
-    int dy = abs(y1 - y0);
-    int dx2 = x1 - x0;
-    int dy2 = y1 - y0;
-    
-    const bool s = abs(dy) > abs(dx);
-
-    if (s) {
-        int dx2 = dx;
-        dx = dy;
-        dy = dx2;
-    }
-
-    int inc1 = 2 * dy;
-    int d = inc1 - dx;
-    int inc2 = d - dx;
-
-    x.push_back(x0);
-    y.push_back(y0);
-
-    while (x0 != x1 || y0 != y1) {
-        if (s) y0+=sgn(dy2); else x0+=sgn(dx2);
-        if (d < 0) d += inc1;
-        else {
-            d += inc2;
-            if (s) x0+=sgn(dx2); else y0+=sgn(dy2);
-        }
-
-        //Add point to vector
-        x.push_back(x0);
-        y.push_back(y0);
-    }
-}
 
 double logit(double x) {
     return log(x / (1 - x));
@@ -183,6 +132,10 @@ int main(int argc, char **argv)
         int pose_map_x = floor((ips_x - ips_x0) / resolution) + (grid.info.width / 2);
         int pose_map_y = floor((ips_y - ips_y0) / resolution) + (grid.info.height / 2);
 
+        // for (int i = 0; i < grid.data.size(); i++){
+        //     grid.data[i] = 50;
+        // }
+
         for (int i = 0; i < scan.ranges.size(); i++) {
 
             std::vector<int> x_s;
@@ -201,6 +154,9 @@ int main(int argc, char **argv)
             int dx = floor(range * cos(angle) / resolution);
             int dy = floor(range * sin(angle) / resolution);
 
+            // ROS_INFO("%d, %d, %d, %d", pose_map_x, pose_map_y, pose_map_x + dx, pose_map_y + dy);
+            // ROS_INFO("%f", range);
+
             bresenham(pose_map_x, pose_map_y, pose_map_x + dx, pose_map_y + dy, x_s, y_s);
 
             for (int j = 0; j < x_s.size(); j++) {
@@ -218,6 +174,7 @@ int main(int argc, char **argv)
                     grid_flt[idx] = logit_p_low + grid_flt[idx] - logit_p_init;
                 }
 
+                // grid.data[idx] = floor(inv_logit(logit_p) * 100);
                 grid.data[idx] = floor(inv_logit(grid_flt[idx]) * 100);
             }
         }
