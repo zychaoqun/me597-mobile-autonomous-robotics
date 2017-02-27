@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(turtlebot_example)
 
+set(CMAKE_CXX_FLAGS "-std=c++0x ${CMAKE_CXX_FLAGS}")
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -110,6 +112,7 @@ include_directories(
  add_executable(turtlebot_my_node src/turtlebot_my_node.cpp)
  add_executable(turtlebot_ips src/turtlebot_ips.cpp)
  add_executable(lab2_mapping src/lab2_mapping.cpp)
+ add_executable(lab2_localization src/lab2_localization.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -126,6 +129,9 @@ include_directories(
    ${catkin_LIBRARIES}
  )
  target_link_libraries(lab2_mapping
+   ${catkin_LIBRARIES}
+ )
+ target_link_libraries(lab2_localization
    ${catkin_LIBRARIES}
  )
 

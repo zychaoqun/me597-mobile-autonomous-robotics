@@ -13,15 +13,20 @@
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseArray.h>
 #include <tf/transform_datatypes.h>
 #include <gazebo_msgs/ModelStates.h>
 #include <visualization_msgs/Marker.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/Path.h>
+#include <nav_msgs/Odometry.h>
 #include <ros/time.h>
 #include <vector>
 #include <sensor_msgs/LaserScan.h>
 #include <math.h> 
 #include <stdio.h>
+#include <random>
+#include <tf/transform_broadcaster.h>
 
 ros::Publisher map_pub;
 
@@ -30,7 +35,13 @@ double ips_y;
 double ips_yaw;
 double ips_x0;
 double ips_y0;
-bool is_initialized;
+double ips_yaw0;
+bool init_pose = false;
+bool new_pose = false;
+bool init_odom = false;
+
+nav_msgs::Odometry odom_curr;
+nav_msgs::Odometry odom_prev;
 
 
 //Callback function for the Position topic (SIMULATION)
@@ -44,11 +55,14 @@ void pose_callback(const gazebo_msgs::ModelStates& msg)
     ips_y = msg.pose[i].position.y ;
     ips_yaw = tf::getYaw(msg.pose[i].orientation);
 
-    if (is_initialized == false) {
-        is_initialized = true;
+    if (init_pose == false) {
+        init_pose = true;
         ips_x0 = ips_x;
         ips_y0 = ips_y;
+        ips_yaw0 = ips_yaw;
     }
+
+    new_pose = true;
 }
 
 //Callback function for the Position topic (LIVE)
@@ -62,14 +76,27 @@ void pose_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
 	ROS_DEBUG("pose_callback X: %f Y: %f Yaw: %f", X, Y, Yaw);
 }*/
 
+//Callback function for the Position topic (SIMULATION)
+void odom_callback(const nav_msgs::Odometry& msg) 
+{
+    odom_prev = odom_curr;
+    odom_curr = msg;
 
-double logit(double x) {
-    return log(x / (1 - x));
+    init_odom = true;
 }
 
-double inv_logit(double x) {
-    return exp(x) / (1 + exp(x));
+double pdf(double x, double mu, double sig) {
+    return (1 / sqrt(2 * sig * sig * M_PI)) * exp(-((x - mu) * (x - mu)) / (2* sig * sig));
 }
+
+struct particle {
+    double x;
+    double y;
+    double yaw;
+    double weight;
+    double weight_cum;
+};
+
 
 int main(int argc, char **argv)
 {
@@ -79,113 +106,197 @@ int main(int argc, char **argv)
 
     //Subscribe to the desired topics and assign callbacks
     ros::Subscriber pose_sub = n.subscribe("/gazebo/model_states", 1, pose_callback);
-    ros::Subscriber laser_sub = n.subscribe("/scan", 1, laser_callback);
-    ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("/lab2_map", 1);
+    ros::Subscriber odom_sub = n.subscribe("/odom", 1, odom_callback);
+    ros::Publisher filter_pub = n.advertise<geometry_msgs::PoseArray>("/particle_filter", 1);
+    ros::Publisher path_pub = n.advertise<nav_msgs::Path>("/path", 1);
 
-    int grid_size = 300;
-    double resolution = 0.05; // m/cell
-    double logit_p_high = logit(0.6), logit_p_low = logit(0.4), logit_p_init = logit(0.5);
+    int num_particles = 500;
+
+    // Q Matrix
+    double Q_std_x = sqrt(0.1); //m
+    double Q_std_y = Q_std_x; 
+    double Q_std_yaw = sqrt(0.05); //rad
+
+    // R Matrix
+    double R_std_x = 0.1; //m
+    double R_std_y = R_std_x; 
+    double R_std_yaw = 0.08; //rad
+    
+
+    std::vector<particle> particles_pred(num_particles);
+    std::vector<particle> particles_est(num_particles);
+
+    // random generators, no need for multivariate since we assume they are all independent
+    std::random_device rd;
+    std::default_random_engine rng(rd());
+    std::normal_distribution<double> Q_dist_x(0.0, Q_std_x);
+    std::normal_distribution<double> Q_dist_y(0.0, Q_std_y);
+    std::normal_distribution<double> Q_dist_yaw(0.0, Q_std_yaw);
+
+    std::normal_distribution<double> R_dist_x(0.0, R_std_x);
+    std::normal_distribution<double> R_dist_y(0.0, R_std_y);
+    std::normal_distribution<double> R_dist_yaw(0.0, R_std_yaw);
+
+    std::uniform_real_distribution<double> uniform_dist(0.0, 1.0);
 
     ros::Time time = ros::Time::now();
-    nav_msgs::OccupancyGrid grid;
+    std::string frame = "odom";
+    geometry_msgs::PoseArray particle_vis;
+    particle_vis.header.seq = 0;
+    particle_vis.header.stamp.sec = time.sec;
+    particle_vis.header.stamp.nsec = time.nsec;
+    particle_vis.header.frame_id = frame;
+    particle_vis.poses = std::vector<geometry_msgs::Pose>(num_particles);
 
-    // initialize grid
-    grid.header.seq = 0;
-    grid.header.stamp.sec = time.sec;
-    grid.header.stamp.nsec = time.nsec;
-    grid.header.frame_id = "0";
-
-    grid.info.resolution = resolution;
-    grid.info.width = grid_size;
-    grid.info.height = grid_size;
-    grid.info.origin.position.x = 0;
-    grid.info.origin.position.y = 0;
-    grid.info.origin.position.z = 0;
-    grid.info.origin.orientation = tf::createQuaternionMsgFromRollPitchYaw(0, 0, 0);
-
-    grid.data = std::vector<int8_t>(grid_size * grid_size, 50);
-    std::vector<double> grid_flt = std::vector<double>(grid_size * grid_size, logit_p_init);
+    nav_msgs::Path path;
+    path.header.seq = 0;
+    path.header.stamp.sec = time.sec;
+    path.header.stamp.nsec = time.nsec;
+    path.header.frame_id = frame;
 
     //Set the loop rate
     ros::Rate loop_rate(5);
 
-    is_initialized = false;
+    init_pose = false;
+    init_odom = false;
+
+    // wait for the first measurement to come in
+    while (ros::ok()) 
+    {
+        loop_rate.sleep();
+        ros::spinOnce();
+
+        ROS_INFO("pose_callback_init X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
+
+        if (init_pose && init_odom) {
+            for (int i = 0; i < particles_est.size(); i++) {
+                particles_est[i].x = ips_x0 + R_dist_x(rng);
+                particles_est[i].y = ips_y0 + R_dist_y(rng);
+                particles_est[i].yaw = ips_yaw0 + R_dist_yaw(rng);
+            }
+
+            new_pose = false;
+            break;
+        }
+    }
 	
     while (ros::ok())
     {
     	loop_rate.sleep(); //Maintain the loop rate
     	ros::spinOnce();   //Check for new messages
 
-        ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
-
-        if (!is_initialized) {
-            continue;
-        }
-
         if (!new_pose) {
             continue;
         }
 
-        // ensure that map is only updated with a updated position of the robot
         new_pose = false;
 
-        int pose_map_x = floor((ips_x - ips_x0) / resolution) + (grid.info.width / 2);
-        int pose_map_y = floor((ips_y - ips_y0) / resolution) + (grid.info.height / 2);
+        ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
 
-        // for (int i = 0; i < grid.data.size(); i++){
-        //     grid.data[i] = 50;
-        // }
+        double dx = odom_curr.pose.pose.position.x - odom_prev.pose.pose.position.x;
+        double dy = odom_curr.pose.pose.position.y - odom_prev.pose.pose.position.y;
+        double dyaw = tf::getYaw(odom_curr.pose.pose.orientation) - tf::getYaw(odom_prev.pose.pose.orientation);
 
-        for (int i = 0; i < scan.ranges.size(); i++) {
+        ROS_ERROR("odom_callback X: %f Y: %f Yaw: %f", dx, dy, dyaw);
 
-            std::vector<int> x_s;
-            std::vector<int> y_s;
-            double angle = ips_yaw + scan.angle_min + scan.angle_increment * i;
-            double range = scan.ranges[i];
-            bool exceed_range = false;
+        // ===== prediction ===== 
+        for (int i = 0; i < particles_est.size(); i++) {
+            double noise_x = Q_dist_x(rng);
+            double noise_y = Q_dist_y(rng);
+            double noise_yaw = Q_dist_yaw(rng);
 
+            particles_pred[i].x = particles_est[i].x + dx + noise_x;
+            particles_pred[i].y = particles_est[i].y + dy + noise_y;
+            particles_pred[i].yaw = particles_est[i].yaw + dyaw + noise_yaw;
+        }
 
-            if (std::isnan(scan.ranges[i])) {
-                // range = scan.range_max;
-                // exceed_range = true;
-                continue;
-            }
+        // ===== update ===== 
+        double weight_sum = 0;
+        for (int i = 0; i < particles_pred.size(); i++) {
+            double p_x = pdf(ips_x, particles_pred[i].x, R_std_x);
+            double p_y = pdf(ips_y, particles_pred[i].y, R_std_y);
+            double p_yaw = pdf(ips_yaw, particles_pred[i].yaw, R_std_yaw);
 
-            int dx = floor(range * cos(angle) / resolution);
-            int dy = floor(range * sin(angle) / resolution);
+            // we can just multiply them because we assume they are independent
+            particles_pred[i].weight = p_x * p_y * p_yaw;
+            weight_sum += particles_pred[i].weight;
+        }
 
-            // ROS_INFO("%d, %d, %d, %d", pose_map_x, pose_map_y, pose_map_x + dx, pose_map_y + dy);
-            // ROS_INFO("%f", range);
+        // normalize and calculate cumulative weights
+        double weight_cum = 0;
+        for (int i = 0; i < particles_pred.size(); i++) {
+            weight_cum += particles_pred[i].weight / weight_sum;
+            particles_pred[i].weight_cum = weight_cum;
+        }
 
-            bresenham(pose_map_x, pose_map_y, pose_map_x + dx, pose_map_y + dy, x_s, y_s);
+        // importance sampling
+        for (int i = 0; i < particles_pred.size(); i++) {
+            double seed = uniform_dist(rng); // generate random number from zero to one
 
-            for (int j = 0; j < x_s.size(); j++) {
-                int grid_x = x_s[j], grid_y = y_s[j];
-                int idx = grid.info.width * grid_y + grid_x;
-
-                // don't do anything if it is out of grid
-                if (grid_x < 0 || grid_x > grid_size - 1 || grid_y < 0 || grid_y > grid_size - 1) {
-                    continue;
+            // find the first particle with the cumulative weight > seed
+            for (int j = 0; j < particles_pred.size(); j++) {
+                if (particles_pred[j].weight_cum > seed) {
+                    particles_est[i] = particles_pred[j];
+                    break;
                 }
-
-                if (j >= x_s.size() - 1 && !exceed_range) {
-                    grid_flt[idx] = logit_p_high + grid_flt[idx] - logit_p_init;
-                } else {
-                    grid_flt[idx] = logit_p_low + grid_flt[idx] - logit_p_init;
-                }
-
-                // grid.data[idx] = floor(inv_logit(logit_p) * 100);
-                grid.data[idx] = floor(inv_logit(grid_flt[idx]) * 100);
             }
         }
 
-        // update time stamp
+        // find mean and variance of particles
+        double mean_x = 0, mean_y = 0, mean_yaw = 0;
+        double var_x = 0, var_y = 0, var_yaw = 0;
+        double ss_x = 0, ss_y = 0, ss_yaw = 0;
+        double n = particles_est.size();
+
+        for (int i = 0; i < particles_est.size(); i++) {
+            mean_x += particles_est[i].x;
+            mean_y += particles_est[i].y;
+            mean_yaw += particles_est[i].yaw;
+
+            ss_x += particles_est[i].x * particles_est[i].x;
+            ss_y += particles_est[i].y * particles_est[i].y;
+            ss_yaw += particles_est[i].yaw * particles_est[i].yaw;
+        }
+
+        mean_x = mean_x / n;
+        mean_y = mean_y / n;
+        mean_yaw = mean_yaw / n;
+
+        var_x = ss_x / n - mean_x * mean_x;
+        var_y = ss_y / n - mean_y * mean_y;
+        var_yaw = ss_yaw / n - mean_yaw * mean_yaw;
+
+        ROS_WARN("pose_est X: %f Y: %f Yaw: %f", mean_x, mean_y, mean_yaw);
+        ROS_WARN("pose_var X: %f Y: %f Yaw: %f", var_x, var_y, var_yaw);
+
+        // output to visualization
+        for (int i = 0; i < particles_est.size(); i++) {
+            particle_vis.poses[i].position.x = particles_est[i].x;
+            particle_vis.poses[i].position.y = particles_est[i].y;
+            particle_vis.poses[i].orientation = tf::createQuaternionMsgFromYaw(particles_est[i].yaw);
+        }
+
         time = ros::Time::now();
-        grid.header.stamp.sec = time.sec;
-        grid.header.stamp.nsec = time.nsec;
+        particle_vis.header.stamp.sec = time.sec;
+        particle_vis.header.stamp.nsec = time.nsec;
 
+        geometry_msgs::PoseStamped pose_stamped;
+        pose_stamped.header.seq = 0;
+        pose_stamped.header.stamp.sec = time.sec;
+        pose_stamped.header.stamp.nsec = time.nsec;
+        pose_stamped.header.frame_id = frame;
+        pose_stamped.pose.position.x = mean_x;
+        pose_stamped.pose.position.y = mean_y;
+        pose_stamped.pose.orientation = tf::createQuaternionMsgFromYaw(mean_yaw);
 
-        map_pub.publish(grid);
+        path.poses.push_back(pose_stamped);
+
+        filter_pub.publish(particle_vis);
+        path_pub.publish(path);
+
+        // // publish map frame
+        // tf::Transform transform;
+        // transform.setOrigin(tf::Vector3(mean_x, msg->y, 0.0))
     }
 
     return 0;

@@ -23,8 +23,6 @@
 #include <math.h> 
 #include <stdio.h>
 
-ros::Publisher map_pub;
-
 double ips_x;
 double ips_y;
 double ips_yaw;
