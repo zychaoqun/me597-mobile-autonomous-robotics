@@ -28,6 +28,7 @@ double ips_y;
 double ips_yaw;
 double ips_x0;
 double ips_y0;
+double ips_yaw0;
 bool is_initialized;
 bool new_pose = false;
 sensor_msgs::LaserScan scan;
@@ -50,6 +51,7 @@ void pose_callback(const gazebo_msgs::ModelStates& msg)
         is_initialized = true;
         ips_x0 = ips_x;
         ips_y0 = ips_y;
+        ips_yaw0 = ips_yaw;
     }
 
     new_pose = true;
@@ -123,7 +125,7 @@ double inv_logit(double x) {
 int main(int argc, char **argv)
 {
 	//Initialize the ROS framework
-    ros::init(argc,argv,"main_control");
+    ros::init(argc,argv,"lab2_mapping");
     ros::NodeHandle n;
 
     //Subscribe to the desired topics and assign callbacks
@@ -142,7 +144,7 @@ int main(int argc, char **argv)
     grid.header.seq = 0;
     grid.header.stamp.sec = time.sec;
     grid.header.stamp.nsec = time.nsec;
-    grid.header.frame_id = "0";
+    grid.header.frame_id = "odom";
 
     grid.info.resolution = resolution;
     grid.info.width = grid_size;
@@ -166,6 +168,12 @@ int main(int argc, char **argv)
     	ros::spinOnce();   //Check for new messages
 
         ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
+
+        double grid_size_m = grid_size * resolution;
+        double grid_size_diag = sqrt(grid_size_m * grid_size_m + grid_size_m * grid_size_m);
+        grid.info.origin.position.x = ips_x0 - grid_size_m / 2 * (cos(ips_yaw0) - sin(ips_yaw0));
+        grid.info.origin.position.y = ips_y0 - grid_size_m / 2 * (sin(ips_yaw0) + cos(ips_yaw0));
+        grid.info.origin.orientation = tf::createQuaternionMsgFromRollPitchYaw(0, 0, ips_yaw0);
 
         if (!is_initialized) {
             continue;

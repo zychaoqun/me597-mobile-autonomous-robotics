@@ -101,7 +101,7 @@ struct particle {
 int main(int argc, char **argv)
 {
 	//Initialize the ROS framework
-    ros::init(argc,argv,"main_control");
+    ros::init(argc,argv,"lab2_localization");
     ros::NodeHandle n;
 
     //Subscribe to the desired topics and assign callbacks
@@ -109,6 +109,7 @@ int main(int argc, char **argv)
     ros::Subscriber odom_sub = n.subscribe("/odom", 1, odom_callback);
     ros::Publisher filter_pub = n.advertise<geometry_msgs::PoseArray>("/particle_filter", 1);
     ros::Publisher path_pub = n.advertise<nav_msgs::Path>("/path", 1);
+    ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("/robot_pose", 1);
 
     int num_particles = 500;
 
@@ -293,10 +294,17 @@ int main(int argc, char **argv)
 
         filter_pub.publish(particle_vis);
         path_pub.publish(path);
+        pose_pub.publish(pose_stamped);
 
-        // // publish map frame
+        // // // publish map frame
+        // tf::TransformBroadcaster br;
         // tf::Transform transform;
-        // transform.setOrigin(tf::Vector3(mean_x, msg->y, 0.0))
+        // transform.setOrigin(tf::Vector3(mean_x - odom_curr.pose.pose.position.x , mean_y - odom_curr.pose.pose.position.y, 0.0));
+        // tf::Quaternion q;
+        // q.setRPY(0, 0, mean_yaw - tf::getYaw(odom_curr.pose.pose.orientation));
+        // transform.setRotation(q);
+        // br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "odom"));
+
     }
 
     return 0;
