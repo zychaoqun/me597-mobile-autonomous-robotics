@@ -110,8 +110,9 @@ int main(int argc, char **argv)
     ros::Publisher filter_pub = n.advertise<geometry_msgs::PoseArray>("/particle_filter", 1);
     ros::Publisher path_pub = n.advertise<nav_msgs::Path>("/path", 1);
     ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("/robot_pose", 1);
+    ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("/robot_odom", 1);
 
-    int num_particles = 500;
+    int num_particles = 200;
 
     // Q Matrix
     double Q_std_x = sqrt(0.1); //m
@@ -290,20 +291,16 @@ int main(int argc, char **argv)
         pose_stamped.pose.position.y = mean_y;
         pose_stamped.pose.orientation = tf::createQuaternionMsgFromYaw(mean_yaw);
 
+        nav_msgs::Odometry odom;
+        odom.pose.pose = pose_stamped.pose;
+        odom.header = pose_stamped.header;
+
         path.poses.push_back(pose_stamped);
+        path_pub.publish(path);
 
         filter_pub.publish(particle_vis);
-        path_pub.publish(path);
         pose_pub.publish(pose_stamped);
-
-        // // // publish map frame
-        // tf::TransformBroadcaster br;
-        // tf::Transform transform;
-        // transform.setOrigin(tf::Vector3(mean_x - odom_curr.pose.pose.position.x , mean_y - odom_curr.pose.pose.position.y, 0.0));
-        // tf::Quaternion q;
-        // q.setRPY(0, 0, mean_yaw - tf::getYaw(odom_curr.pose.pose.orientation));
-        // transform.setRotation(q);
-        // br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "odom"));
+        odom_pub.publish(odom);
 
     }
 

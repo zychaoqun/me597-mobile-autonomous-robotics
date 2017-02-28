@@ -135,6 +135,7 @@ int main(int argc, char **argv)
 
     int grid_size = 300;
     double resolution = 0.05; // m/cell
+    double grid_size_m = grid_size * resolution;
     double logit_p_high = logit(0.6), logit_p_low = logit(0.4), logit_p_init = logit(0.5);
 
     ros::Time time = ros::Time::now();
@@ -169,11 +170,8 @@ int main(int argc, char **argv)
 
         ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
 
-        double grid_size_m = grid_size * resolution;
-        double grid_size_diag = sqrt(grid_size_m * grid_size_m + grid_size_m * grid_size_m);
-        grid.info.origin.position.x = ips_x0 - grid_size_m / 2 * (cos(ips_yaw0) - sin(ips_yaw0));
-        grid.info.origin.position.y = ips_y0 - grid_size_m / 2 * (sin(ips_yaw0) + cos(ips_yaw0));
-        grid.info.origin.orientation = tf::createQuaternionMsgFromRollPitchYaw(0, 0, ips_yaw0);
+        grid.info.origin.position.x = ips_x0 - grid_size_m / 2;
+        grid.info.origin.position.y = ips_y0 - grid_size_m / 2;
 
         if (!is_initialized) {
             continue;
