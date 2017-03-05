@@ -14,6 +14,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <tf/transform_datatypes.h>
 #include <gazebo_msgs/ModelStates.h>
 #include <visualization_msgs/Marker.h>
@@ -45,7 +46,7 @@ nav_msgs::Odometry odom_prev;
 
 
 //Callback function for the Position topic (SIMULATION)
-void pose_callback(const gazebo_msgs::ModelStates& msg) 
+void pose_gazebo_callback(const gazebo_msgs::ModelStates& msg) 
 {
 
     int i;
@@ -66,15 +67,23 @@ void pose_callback(const gazebo_msgs::ModelStates& msg)
 }
 
 //Callback function for the Position topic (LIVE)
-/*
-void pose_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
+
+void pose_ips_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
 {
 
-	ips_x X = msg.pose.pose.position.x; // Robot X psotition
-	ips_y Y = msg.pose.pose.position.y; // Robot Y psotition
+	ips_x = msg.pose.pose.position.x; // Robot X psotition
+	ips_y = msg.pose.pose.position.y; // Robot Y psotition
 	ips_yaw = tf::getYaw(msg.pose.pose.orientation); // Robot Yaw
-	ROS_DEBUG("pose_callback X: %f Y: %f Yaw: %f", X, Y, Yaw);
-}*/
+
+    if (init_pose == false) {
+        init_pose = true;
+        ips_x0 = ips_x;
+        ips_y0 = ips_y;
+        ips_yaw0 = ips_yaw;
+    }
+
+    new_pose = true;
+}
 
 //Callback function for the Position topic (SIMULATION)
 void odom_callback(const nav_msgs::Odometry& msg) 
@@ -105,24 +114,30 @@ int main(int argc, char **argv)
     ros::NodeHandle n;
 
     //Subscribe to the desired topics and assign callbacks
-    ros::Subscriber pose_sub = n.subscribe("/gazebo/model_states", 1, pose_callback);
+    ros::Subscriber pose_gazebo_sub = n.subscribe("/gazebo/model_states", 1, pose_gazebo_callback);
+    ros::Subscriber pose_ips_sub = n.subscribe("/indoor_pos", 1, pose_ips_callback);
+
     ros::Subscriber odom_sub = n.subscribe("/odom", 1, odom_callback);
     ros::Publisher filter_pub = n.advertise<geometry_msgs::PoseArray>("/particle_filter", 1);
     ros::Publisher path_pub = n.advertise<nav_msgs::Path>("/path", 1);
     ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("/robot_pose", 1);
+    ros::Publisher ips_pub = n.advertise<geometry_msgs::PoseStamped>("/ips_pose", 1);
     ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("/robot_odom", 1);
 
-    int num_particles = 200;
+    int num_particles = 500;
 
     // Q Matrix
-    double Q_std_x = sqrt(0.1); //m
+    // double Q_std_x = sqrt(0.1); //m
+    // double Q_std_y = Q_std_x; 
+    // double Q_std_yaw = sqrt(0.05); //rad
+    double Q_std_x = 0.01; //m
     double Q_std_y = Q_std_x; 
-    double Q_std_yaw = sqrt(0.05); //rad
+    double Q_std_yaw = 0.01; //rad
 
     // R Matrix
     double R_std_x = 0.1; //m
     double R_std_y = R_std_x; 
-    double R_std_yaw = 0.08; //rad
+    double R_std_yaw = 0.05; //rad
     
 
     std::vector<particle> particles_pred(num_particles);
@@ -157,7 +172,7 @@ int main(int argc, char **argv)
     path.header.frame_id = frame;
 
     //Set the loop rate
-    ros::Rate loop_rate(5);
+    ros::Rate loop_rate(30);
 
     init_pose = false;
     init_odom = false;
@@ -187,19 +202,18 @@ int main(int argc, char **argv)
     	loop_rate.sleep(); //Maintain the loop rate
     	ros::spinOnce();   //Check for new messages
 
-        if (!new_pose) {
-            continue;
-        }
 
-        new_pose = false;
+        // ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
 
-        ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
+        // double dx = odom_curr.pose.pose.position.x - odom_prev.pose.pose.position.x;
+        // double dy = odom_curr.pose.pose.position.y - odom_prev.pose.pose.position.y;
+        // double dyaw = tf::getYaw(odom_curr.pose.pose.orientation) - tf::getYaw(odom_prev.pose.pose.orientation);
 
-        double dx = odom_curr.pose.pose.position.x - odom_prev.pose.pose.position.x;
-        double dy = odom_curr.pose.pose.position.y - odom_prev.pose.pose.position.y;
-        double dyaw = tf::getYaw(odom_curr.pose.pose.orientation) - tf::getYaw(odom_prev.pose.pose.orientation);
+        double vx = odom_curr.twist.twist.linear.x;
+        double vy = odom_curr.twist.twist.linear.y;
+        double vyaw = odom_curr.twist.twist.angular.z;
 
-        ROS_ERROR("odom_callback X: %f Y: %f Yaw: %f", dx, dy, dyaw);
+        // ROS_INFO("odom_callback vX: %g vY: %g vYaw: %g", vx, vy, vyaw);
 
         // ===== prediction ===== 
         for (int i = 0; i < particles_est.size(); i++) {
@@ -207,39 +221,77 @@ int main(int argc, char **argv)
             double noise_y = Q_dist_y(rng);
             double noise_yaw = Q_dist_yaw(rng);
 
+            double dt = 1.0/30.0;
+            double dx = vx*cos(particles_pred[i].yaw)*dt;
+            double dy = vx*sin(particles_pred[i].yaw)*dt;
+            double dyaw = vyaw*dt;
+
             particles_pred[i].x = particles_est[i].x + dx + noise_x;
             particles_pred[i].y = particles_est[i].y + dy + noise_y;
             particles_pred[i].yaw = particles_est[i].yaw + dyaw + noise_yaw;
+
+            // if (particles_pred[i].yaw > M_PI) {
+            //     particles_pred[i].yaw -= 2 * M_PI;
+            // } 
+
+            // else if (particles_pred[i].yaw < -M_PI) {
+            //     particles_pred[i].yaw += 2 * M_PI;
+            // } 
         }
 
-        // ===== update ===== 
-        double weight_sum = 0;
-        for (int i = 0; i < particles_pred.size(); i++) {
-            double p_x = pdf(ips_x, particles_pred[i].x, R_std_x);
-            double p_y = pdf(ips_y, particles_pred[i].y, R_std_y);
-            double p_yaw = pdf(ips_yaw, particles_pred[i].yaw, R_std_yaw);
+        if (!new_pose) {
+            for (int i = 0; i < particles_est.size(); i++) {
+                particles_est[i] = particles_pred[i];
+            }
+        } else {
 
-            // we can just multiply them because we assume they are independent
-            particles_pred[i].weight = p_x * p_y * p_yaw;
-            weight_sum += particles_pred[i].weight;
-        }
+            ROS_ERROR("pose_callback vX: %g vY: %g vYaw: %g", ips_x, ips_y, ips_yaw);
 
-        // normalize and calculate cumulative weights
-        double weight_cum = 0;
-        for (int i = 0; i < particles_pred.size(); i++) {
-            weight_cum += particles_pred[i].weight / weight_sum;
-            particles_pred[i].weight_cum = weight_cum;
-        }
+            time = ros::Time::now();
+            geometry_msgs::PoseStamped ips_pose_stamped;
+            ips_pose_stamped.header.seq = 0;
+            ips_pose_stamped.header.stamp.sec = time.sec;
+            ips_pose_stamped.header.stamp.nsec = time.nsec;
+            ips_pose_stamped.header.frame_id = frame;
+            ips_pose_stamped.pose.position.x = ips_x;
+            ips_pose_stamped.pose.position.y = ips_y;
+            ips_pose_stamped.pose.orientation = tf::createQuaternionMsgFromYaw(ips_yaw);
+            ips_pub.publish(ips_pose_stamped);
 
-        // importance sampling
-        for (int i = 0; i < particles_pred.size(); i++) {
-            double seed = uniform_dist(rng); // generate random number from zero to one
+            if (ips_yaw > M_PI || ips_yaw < -M_PI) {
+                ROS_ERROR("pose_callback vX: %g vY: %g vYaw: %g", ips_x, ips_y, ips_yaw);
+            }
 
-            // find the first particle with the cumulative weight > seed
-            for (int j = 0; j < particles_pred.size(); j++) {
-                if (particles_pred[j].weight_cum > seed) {
-                    particles_est[i] = particles_pred[j];
-                    break;
+            // ===== update ===== 
+            double weight_sum = 0;
+            for (int i = 0; i < particles_pred.size(); i++) {
+                double p_x = pdf(ips_x, particles_pred[i].x, R_std_x);
+                double p_y = pdf(ips_y, particles_pred[i].y, R_std_y);
+                double p_yaw = pdf(ips_yaw, particles_pred[i].yaw, R_std_yaw);
+
+                // we can just multiply them because we assume they are independent
+                particles_pred[i].weight = p_x * p_y * p_yaw;
+                weight_sum += particles_pred[i].weight;
+            }
+
+            // normalize and calculate cumulative weights
+            double weight_cum = 0;
+            for (int i = 0; i < particles_pred.size(); i++) {
+                weight_cum += particles_pred[i].weight / weight_sum;
+                particles_pred[i].weight_cum = weight_cum;
+            }
+
+            // importance sampling
+            for (int i = 0; i < particles_pred.size(); i++) {
+                double seed = uniform_dist(rng); // generate random number from zero to one
+
+                // find the first particle with the cumulative weight > seed
+                for (int j = 0; j < particles_pred.size(); j++) {
+                    if (particles_pred[j].weight_cum > seed) {
+                        particles_est[i] = particles_pred[j];
+                        particles_est[i].weight = 1;
+                        break;
+                    }
                 }
             }
         }
@@ -255,6 +307,15 @@ int main(int argc, char **argv)
             mean_y += particles_est[i].y;
             mean_yaw += particles_est[i].yaw;
 
+            // double yaw_corr;
+            // if (particles_est[i].yaw < 0) {
+            //     yaw_corr = particles_est[i].yaw + 2 * M_PI;
+            // } else {
+            //     yaw_corr = particles_est[i].yaw;
+            // }
+
+            mean_yaw += yaw_corr;
+            
             ss_x += particles_est[i].x * particles_est[i].x;
             ss_y += particles_est[i].y * particles_est[i].y;
             ss_yaw += particles_est[i].yaw * particles_est[i].yaw;
@@ -268,8 +329,12 @@ int main(int argc, char **argv)
         var_y = ss_y / n - mean_y * mean_y;
         var_yaw = ss_yaw / n - mean_yaw * mean_yaw;
 
-        ROS_WARN("pose_est X: %f Y: %f Yaw: %f", mean_x, mean_y, mean_yaw);
-        ROS_WARN("pose_var X: %f Y: %f Yaw: %f", var_x, var_y, var_yaw);
+        // if (new_pose) {
+            ROS_WARN("pose_est X: %f Y: %f Yaw: %f", mean_x, mean_y, mean_yaw);
+            ROS_WARN("pose_var X: %f Y: %f Yaw: %f", var_x, var_y, var_yaw);
+        // }
+
+        new_pose = false;
 
         // output to visualization
         for (int i = 0; i < particles_est.size(); i++) {

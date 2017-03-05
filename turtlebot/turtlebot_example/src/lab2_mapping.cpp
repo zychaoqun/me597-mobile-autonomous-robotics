@@ -13,6 +13,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <tf/transform_datatypes.h>
 #include <gazebo_msgs/ModelStates.h>
 #include <visualization_msgs/Marker.h>
@@ -37,7 +38,7 @@ sensor_msgs::LaserScan scan;
 short sgn(int x) { return x >= 0 ? 1 : -1; }
 
 //Callback function for the Position topic (SIMULATION)
-void pose_callback(const gazebo_msgs::ModelStates& msg) 
+void pose_gazebo_callback(const gazebo_msgs::ModelStates& msg) 
 {
 
     int i;
@@ -58,15 +59,23 @@ void pose_callback(const gazebo_msgs::ModelStates& msg)
 }
 
 //Callback function for the Position topic (LIVE)
-/*
-void pose_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
+
+void pose_ips_callback(const geometry_msgs::PoseWithCovarianceStamped& msg)
 {
 
-	ips_x X = msg.pose.pose.position.x; // Robot X psotition
-	ips_y Y = msg.pose.pose.position.y; // Robot Y psotition
+	ips_x = msg.pose.pose.position.x; // Robot X psotition
+	ips_y = msg.pose.pose.position.y; // Robot Y psotition
 	ips_yaw = tf::getYaw(msg.pose.pose.orientation); // Robot Yaw
-	ROS_DEBUG("pose_callback X: %f Y: %f Yaw: %f", X, Y, Yaw);
-}*/
+
+    if (is_initialized == false) {
+        is_initialized = true;
+        ips_x0 = ips_x;
+        ips_y0 = ips_y;
+        ips_yaw0 = ips_yaw;
+    }
+
+    new_pose = true;
+}
 
 //Callback function for the Position topic (SIMULATION)
 void laser_callback(const sensor_msgs::LaserScan& msg) 
@@ -129,12 +138,14 @@ int main(int argc, char **argv)
     ros::NodeHandle n;
 
     //Subscribe to the desired topics and assign callbacks
-    ros::Subscriber pose_sub = n.subscribe("/gazebo/model_states", 1, pose_callback);
+    ros::Subscriber pose_gazebo_sub = n.subscribe("/gazebo/model_states", 1, pose_gazebo_callback);
+    ros::Subscriber pose_ips_sub = n.subscribe("/indoor_pos", 1, pose_ips_callback);
+
     ros::Subscriber laser_sub = n.subscribe("/scan", 1, laser_callback);
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("/lab2_map", 1);
 
-    int grid_size = 300;
-    double resolution = 0.05; // m/cell
+    int grid_size = 500;
+    double resolution = 0.025; // m/cell
     double grid_size_m = grid_size * resolution;
     double logit_p_high = logit(0.6), logit_p_low = logit(0.4), logit_p_init = logit(0.5);
 
