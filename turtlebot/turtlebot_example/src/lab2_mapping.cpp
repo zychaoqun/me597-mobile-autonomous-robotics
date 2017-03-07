@@ -144,8 +144,8 @@ int main(int argc, char **argv)
     ros::Subscriber laser_sub = n.subscribe("/scan", 1, laser_callback);
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("/lab2_map", 1);
 
-    int grid_size = 500;
-    double resolution = 0.025; // m/cell
+    int grid_size = 400;
+    double resolution = 0.05; // m/cell
     double grid_size_m = grid_size * resolution;
     double logit_p_high = logit(0.6), logit_p_low = logit(0.4), logit_p_init = logit(0.5);
 
@@ -231,6 +231,14 @@ int main(int argc, char **argv)
                     grid_flt[idx] = logit_p_high + grid_flt[idx] - logit_p_init;
                 } else {
                     grid_flt[idx] = logit_p_low + grid_flt[idx] - logit_p_init;
+                }
+
+                if (grid_flt[idx] < logit(0.000001)) {
+                    grid_flt[idx] = logit(0.000001);
+                }
+
+                if (grid_flt[idx] > logit(0.999999)) {
+                    grid_flt[idx] = logit(0.999999);
                 }
 
                 grid.data[idx] = floor(inv_logit(grid_flt[idx]) * 100);

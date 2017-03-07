@@ -120,19 +120,19 @@ int main(int argc, char **argv)
     ros::Subscriber odom_sub = n.subscribe("/odom", 1, odom_callback);
     ros::Publisher filter_pub = n.advertise<geometry_msgs::PoseArray>("/particle_filter", 1);
     ros::Publisher path_pub = n.advertise<nav_msgs::Path>("/path", 1);
+    ros::Publisher ips_path_pub = n.advertise<nav_msgs::Path>("/ips_path", 1);
     ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("/robot_pose", 1);
     ros::Publisher ips_pub = n.advertise<geometry_msgs::PoseStamped>("/ips_pose", 1);
-    ros::Publisher odom_pub = n.advertise<nav_msgs::Odometry>("/robot_odom", 1);
 
-    int num_particles = 500;
+    int num_particles = 100;
 
     // Q Matrix
     // double Q_std_x = sqrt(0.1); //m
     // double Q_std_y = Q_std_x; 
     // double Q_std_yaw = sqrt(0.05); //rad
-    double Q_std_x = 0.01; //m
+    double Q_std_x = 0.003; //m
     double Q_std_y = Q_std_x; 
-    double Q_std_yaw = 0.01; //rad
+    double Q_std_yaw = 0.0174533; //rad
 
     // R Matrix
     double R_std_x = 0.1; //m
@@ -171,6 +171,12 @@ int main(int argc, char **argv)
     path.header.stamp.nsec = time.nsec;
     path.header.frame_id = frame;
 
+    nav_msgs::Path ips_path;
+    ips_path.header.seq = 0;
+    ips_path.header.stamp.sec = time.sec;
+    ips_path.header.stamp.nsec = time.nsec;
+    ips_path.header.frame_id = frame;
+
     //Set the loop rate
     ros::Rate loop_rate(30);
 
@@ -202,13 +208,6 @@ int main(int argc, char **argv)
     	loop_rate.sleep(); //Maintain the loop rate
     	ros::spinOnce();   //Check for new messages
 
-
-        // ROS_INFO("pose_callback X: %f Y: %f Yaw: %f", ips_x, ips_y, ips_yaw);
-
-        // double dx = odom_curr.pose.pose.position.x - odom_prev.pose.pose.position.x;
-        // double dy = odom_curr.pose.pose.position.y - odom_prev.pose.pose.position.y;
-        // double dyaw = tf::getYaw(odom_curr.pose.pose.orientation) - tf::getYaw(odom_prev.pose.pose.orientation);
-
         double vx = odom_curr.twist.twist.linear.x;
         double vy = odom_curr.twist.twist.linear.y;
         double vyaw = odom_curr.twist.twist.angular.z;
@@ -230,13 +229,14 @@ int main(int argc, char **argv)
             particles_pred[i].y = particles_est[i].y + dy + noise_y;
             particles_pred[i].yaw = particles_est[i].yaw + dyaw + noise_yaw;
 
-            // if (particles_pred[i].yaw > M_PI) {
-            //     particles_pred[i].yaw -= 2 * M_PI;
-            // } 
+            // handle angle roll over
+            if (particles_pred[i].yaw > M_PI) {
+                particles_pred[i].yaw -= 2 * M_PI;
+            } 
 
-            // else if (particles_pred[i].yaw < -M_PI) {
-            //     particles_pred[i].yaw += 2 * M_PI;
-            // } 
+            else if (particles_pred[i].yaw < -M_PI) {
+                particles_pred[i].yaw += 2 * M_PI;
+            } 
         }
 
         if (!new_pose) {
@@ -245,7 +245,8 @@ int main(int argc, char **argv)
             }
         } else {
 
-            ROS_ERROR("pose_callback vX: %g vY: %g vYaw: %g", ips_x, ips_y, ips_yaw);
+            ROS_ERROR("pose_callback X: %g Y: %g Yaw: %g", ips_x, ips_y, ips_yaw);
+            new_pose = false;
 
             time = ros::Time::now();
             geometry_msgs::PoseStamped ips_pose_stamped;
@@ -256,11 +257,12 @@ int main(int argc, char **argv)
             ips_pose_stamped.pose.position.x = ips_x;
             ips_pose_stamped.pose.position.y = ips_y;
             ips_pose_stamped.pose.orientation = tf::createQuaternionMsgFromYaw(ips_yaw);
-            ips_pub.publish(ips_pose_stamped);
+            
+            ips_path.poses.push_back(ips_pose_stamped);
 
-            if (ips_yaw > M_PI || ips_yaw < -M_PI) {
-                ROS_ERROR("pose_callback vX: %g vY: %g vYaw: %g", ips_x, ips_y, ips_yaw);
-            }
+            ips_pub.publish(ips_pose_stamped);
+            ips_path_pub.publish(ips_path);
+
 
             // ===== update ===== 
             double weight_sum = 0;
@@ -297,44 +299,30 @@ int main(int argc, char **argv)
         }
 
         // find mean and variance of particles
-        double mean_x = 0, mean_y = 0, mean_yaw = 0;
-        double var_x = 0, var_y = 0, var_yaw = 0;
-        double ss_x = 0, ss_y = 0, ss_yaw = 0;
+        double mean_x = 0, mean_y = 0, mean_yaw = 0, mean_cos_yaw = 0, mean_sin_yaw = 0;
+        double var_x = 0, var_y = 0;
+        double ss_x = 0, ss_y = 0;
         double n = particles_est.size();
 
         for (int i = 0; i < particles_est.size(); i++) {
             mean_x += particles_est[i].x;
             mean_y += particles_est[i].y;
-            mean_yaw += particles_est[i].yaw;
-
-            // double yaw_corr;
-            // if (particles_est[i].yaw < 0) {
-            //     yaw_corr = particles_est[i].yaw + 2 * M_PI;
-            // } else {
-            //     yaw_corr = particles_est[i].yaw;
-            // }
-
-            mean_yaw += yaw_corr;
+            mean_cos_yaw += cos(particles_est[i].yaw);
+            mean_sin_yaw += sin(particles_est[i].yaw);
             
             ss_x += particles_est[i].x * particles_est[i].x;
             ss_y += particles_est[i].y * particles_est[i].y;
-            ss_yaw += particles_est[i].yaw * particles_est[i].yaw;
         }
 
         mean_x = mean_x / n;
         mean_y = mean_y / n;
-        mean_yaw = mean_yaw / n;
+        mean_yaw = atan2(mean_sin_yaw / n, mean_cos_yaw / n);
 
         var_x = ss_x / n - mean_x * mean_x;
         var_y = ss_y / n - mean_y * mean_y;
-        var_yaw = ss_yaw / n - mean_yaw * mean_yaw;
 
-        // if (new_pose) {
-            ROS_WARN("pose_est X: %f Y: %f Yaw: %f", mean_x, mean_y, mean_yaw);
-            ROS_WARN("pose_var X: %f Y: %f Yaw: %f", var_x, var_y, var_yaw);
-        // }
-
-        new_pose = false;
+        ROS_WARN("pose_est X: %f Y: %f Yaw: %f", mean_x, mean_y, mean_yaw);
+        ROS_WARN("pose_var X: %f Y: %f", var_x, var_y);
 
         // output to visualization
         for (int i = 0; i < particles_est.size(); i++) {
@@ -356,16 +344,12 @@ int main(int argc, char **argv)
         pose_stamped.pose.position.y = mean_y;
         pose_stamped.pose.orientation = tf::createQuaternionMsgFromYaw(mean_yaw);
 
-        nav_msgs::Odometry odom;
-        odom.pose.pose = pose_stamped.pose;
-        odom.header = pose_stamped.header;
 
         path.poses.push_back(pose_stamped);
         path_pub.publish(path);
 
         filter_pub.publish(particle_vis);
         pose_pub.publish(pose_stamped);
-        odom_pub.publish(odom);
 
     }
 
