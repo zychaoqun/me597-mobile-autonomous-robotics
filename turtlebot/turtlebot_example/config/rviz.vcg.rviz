@@ -7,6 +7,7 @@ Panels:
         - /Global Options1
         - /Milestones (Graph Vertex)1
         - /Milestones (Graph Vertex)1/Namespaces1
+        - /Path1
       Splitter Ratio: 0.5
     Tree Height: 754
   - Class: rviz/Selection
@@ -410,10 +411,16 @@ Visualization Manager:
       Name: Milestones (Graph Vertex)
       Namespaces:
         end_node: true
-        invalid_nodes: true
-        start_node: true
         valid_nodes: true
       Queue Size: 10000
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /prm_path
+      Name: Path
+      Namespaces:
+        path: true
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
@@ -447,11 +454,11 @@ Visualization Manager:
         Value: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 82.5524
+      Scale: 61.1582
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 4.58269
-      Y: -0.367871
+      X: 5.33016
+      Y: 0.77169
     Saved: ~
 Window Geometry:
   Displays:

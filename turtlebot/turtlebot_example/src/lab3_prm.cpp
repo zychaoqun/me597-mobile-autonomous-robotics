@@ -32,6 +32,7 @@
 
 ros::Publisher nodes_pub;
 ros::Publisher edges_pub;
+ros::Publisher path_pub;
 nav_msgs::OccupancyGrid occupancy_grid;
 
 
@@ -79,9 +80,14 @@ struct Edge {
 };
 
 struct Node  {
+    int id; // unique creates a quick way for node comparison
     Point pt;
     Node *prev;
     std::vector<Edge> edges;
+
+    // for A*
+    double f, g, h;
+    bool is_open, is_closed;
 };
 
 short sgn(int x) { return x >= 0 ? 1 : -1; }
@@ -130,11 +136,11 @@ bool check_collision(const nav_msgs::OccupancyGrid &grid, Point start, Point end
     std::vector<int> x;
     std::vector<int> y;
 
-    int sample_every_other = 1;
+    int SAMPLE_EVERY_OTHER = 1;
 
     bresenham(start.x, start.y, end.x, end.y, x, y);
 
-    for (int i = 0; i < x.size(); i+=sample_every_other) {
+    for (int i = 0; i < x.size(); i+=SAMPLE_EVERY_OTHER) {
         int idx = grid.info.width * y[i] + x[i];
 
         // if there is a collision
@@ -146,28 +152,28 @@ bool check_collision(const nav_msgs::OccupancyGrid &grid, Point start, Point end
     return true;
 }
 
-double node_dist(const Node &n1, const Node &n2) {
+double node_dist(const Node *n1, const Node *n2) {
     // std::cout << sqrt((n1.pt.x - n2.pt.x) * (n1.pt.x - n2.pt.x) + (n1.pt.y - n2.pt.y) * (n1.pt.y - n2.pt.y)) << std::endl;
-    return sqrt((n1.pt.x - n2.pt.x) * (n1.pt.x - n2.pt.x) + (n1.pt.y - n2.pt.y) * (n1.pt.y - n2.pt.y));
+    return sqrt((n1->pt.x - n2->pt.x) * (n1->pt.x - n2->pt.x) + (n1->pt.y - n2->pt.y) * (n1->pt.y - n2->pt.y));
 }
 
-void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point end_pt, std::vector<Point> &way_points) {
-
+bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point end_pt, std::vector<Point> &way_points) {
     ros::Time tic = ros::Time::now();
-    int n_samples = 100;
-    int n_cloest_nodes = 10;
-    double prm_gaussian_sample_std_dev = 0.75; // meters
+
+    const int N_SAMPLES = 300;
+    const int N_TRY_CLOSEST_NODES = 5;
+    const double PRM_GAUSSIAN_STD_DEV = 0.5; // meters
 
     // random generators
     std::random_device rd;
-    std::default_random_engine rng(812734019273);
-    std::normal_distribution<double> prm_gaussian_sample(0.0, prm_gaussian_sample_std_dev);
+    std::default_random_engine rng(0);
+    std::normal_distribution<double> prm_gaussian_sample(0.0, PRM_GAUSSIAN_STD_DEV);
     std::uniform_int_distribution<int> width_dist(0, grid.info.width);
     std::uniform_int_distribution<int> height_dist(0, grid.info.height);
 
-    std::vector<Node> milestones;
+    std::vector<Node*> milestones;
 
-    visualization_msgs::Marker valid_nodes_viz, invalid_nodes_viz, start_node_viz, end_node_viz;
+    visualization_msgs::Marker valid_nodes_viz, start_node_viz, end_node_viz, path_viz;
     visualization_msgs::Marker edge_base_viz;
     visualization_msgs::MarkerArray edges_viz;
 
@@ -184,13 +190,6 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
     valid_nodes_viz.color.g = 1.0;
     valid_nodes_viz.color.b = 0.0;
     valid_nodes_viz.color.a = 1.0;
-
-    invalid_nodes_viz = valid_nodes_viz;
-    invalid_nodes_viz.id = 1;
-    invalid_nodes_viz.ns = "invalid_nodes";
-    invalid_nodes_viz.color.r = 1.0;
-    invalid_nodes_viz.color.g = 0.0;
-    invalid_nodes_viz.color.b = 0.0;
 
     start_node_viz = valid_nodes_viz;
     start_node_viz.id = 2;
@@ -209,6 +208,16 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
     end_node_viz.scale.y = 0.15;
     end_node_viz.scale.z = 0.15;
 
+    path_viz = start_node_viz;
+    path_viz.type = visualization_msgs::Marker::LINE_STRIP;
+    path_viz.id = 4;
+    path_viz.ns = "path";
+    path_viz.scale.x = 0.05;
+    path_viz.color.r = 1.0;
+    path_viz.color.g = 0.0;
+    path_viz.color.b = 1.0;
+    path_viz.color.a = 1;
+
     edge_base_viz = valid_nodes_viz;
     edge_base_viz.type = visualization_msgs::Marker::LINE_STRIP;
     edge_base_viz.action = visualization_msgs::Marker::ADD;
@@ -219,67 +228,77 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
     edge_base_viz.scale.x = 0.02;
 
     // add the start and end nodes
-    Node start_node, end_node;
-    start_node.pt.x = (start_pt.x - grid.info.origin.position.x) / grid.info.resolution;
-    start_node.pt.y = (start_pt.y - grid.info.origin.position.y) / grid.info.resolution;
-    end_node.pt.x = (end_pt.x - grid.info.origin.position.x) / grid.info.resolution;
-    end_node.pt.y = (end_pt.y - grid.info.origin.position.y) / grid.info.resolution;
+    Node *start_node = new Node(), *end_node = new Node();
+    start_node->pt.x = (start_pt.x - grid.info.origin.position.x) / grid.info.resolution;
+    start_node->pt.y = (start_pt.y - grid.info.origin.position.y) / grid.info.resolution;
+    end_node->pt.x = (end_pt.x - grid.info.origin.position.x) / grid.info.resolution;
+    end_node->pt.y = (end_pt.y - grid.info.origin.position.y) / grid.info.resolution;
+
+    const int START_NODE_ID = 0, END_NODE_ID = 1;
+    start_node->id = START_NODE_ID;
+    end_node->id = END_NODE_ID;
+
+    geometry_msgs::Point start_pt_viz = start_node->pt.viz(grid), end_pt_viz = end_node->pt.viz(grid);
+    start_node_viz.points.push_back(start_pt_viz);
+    end_node_viz.points.push_back(end_pt_viz);
+
+    // add the start and end nodes to milestones
     milestones.push_back(start_node);
     milestones.push_back(end_node);
-    start_node_viz.points.push_back(start_node.pt.viz(grid));
-    end_node_viz.points.push_back(end_node.pt.viz(grid));
 
     // generate milestones
     int n_gen = 0;
-    while (n_gen < n_samples) {
+    while (n_gen < N_SAMPLES) {
         int x1 = width_dist(rng);
         int y1 = height_dist(rng);
         int idx1 = grid.info.width * y1 + x1;
 
-        int x2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + x1;
-        int y2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + y1;
-        if (x2 < 0 || x2 > grid.info.width - 1 || y2 < 0 || y2 > grid.info.height - 1) {
+        if (grid.data[idx1] > 50) {
             continue;
         }
-        int idx2 = grid.info.width * y2 + x2;
 
         Point pt;
-        if ((grid.data[idx1] < 50) && (grid.data[idx2] < 50)) {
-            continue;
-        }
-        else if ((grid.data[idx1] >= 50) && (grid.data[idx2] >= 50)) {
-            continue;
-        } else if (grid.data[idx1] < 50) {
-            pt.x = x1;
-            pt.y = y1;
-        } else if (grid.data[idx2] < 50) {
-            pt.x = x2;
-            pt.y = y2;
-        }
+        pt.x = x1;
+        pt.y = y1;
+
+        // int x2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + x1;
+        // int y2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + y1;
+        // if (x2 < 0 || x2 > grid.info.width - 1 || y2 < 0 || y2 > grid.info.height - 1) {
+        //     continue;
+        // }
+        // int idx2 = grid.info.width * y2 + x2;
 
         // Point pt;
+        // if ((grid.data[idx1] < 50) && (grid.data[idx2] < 50)) {
+        //     continue;
+        // }
+        // else if ((grid.data[idx1] >= 50) && (grid.data[idx2] >= 50)) {
+        //     continue;
+        // } else if (grid.data[idx1] < 50) {
+        //     pt.x = x1;
+        //     pt.y = y1;
+        // } else if (grid.data[idx2] < 50) {
+        //     pt.x = x2;
+        //     pt.y = y2;
+        // }
+
         geometry_msgs::Point pt_viz;
-        // pt.x = x1;
-        // pt.y = y1;
         pt_viz = pt.viz(grid);
 
-        // if cell is empty
-        // if (grid.data[idx1] < 50) {
-        Node n;
-        n.pt = pt;
+        Node *n = new Node();
+        n->pt = pt;
+        n->id = milestones.size();
         milestones.push_back(n);
         n_gen++;
 
         valid_nodes_viz.points.push_back(pt_viz); // visualization
-        // } else {
-        //     invalid_nodes_viz.points.push_back(pt_viz); // visualization
-        // }
     }
 
-    std::vector<Node> milestones_sorted = milestones;
+    ROS_INFO("%lu milestones", milestones.size());
+
     for (int i = 0; i < milestones.size(); i++) {
 
-        auto sort_milestones_by_closeness = [&](const Node &n1, const Node &n2) {
+        auto sort_milestones_by_closeness = [&](const Node *n1, const Node *n2) {
             double d1 = node_dist(milestones[i], n1);
             double d2 = node_dist(milestones[i], n2);
             return d1 < d2;
@@ -287,24 +306,24 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
         
         std::sort(milestones.begin(), milestones.begin() + i, sort_milestones_by_closeness);
 
-        for (int j = 0; j < std::min(i, n_cloest_nodes); j++) {
+        for (int j = 0; j < std::min(i, N_TRY_CLOSEST_NODES); j++) {
             // check if edge has a collision
-            if (check_collision(grid, milestones[i].pt, milestones[j].pt)) {
+            if (check_collision(grid, milestones[i]->pt, milestones[j]->pt)) {
                 Edge e1, e2;
-                e1.node_from = &milestones[i];
-                e1.node_to = &milestones[j];
+                e1.node_from = milestones[i];
+                e1.node_to = milestones[j];
                 e1.dist = node_dist(milestones[i], milestones[j]);
 
                 e2.node_from = e1.node_to;
                 e2.node_to = e1.node_from;
                 e2.dist = e1.dist;
 
-                milestones[i].edges.push_back(e1);
-                milestones[j].edges.push_back(e2);
+                milestones[i]->edges.push_back(e1);
+                milestones[j]->edges.push_back(e2);
 
                 // visualization, only need one (bidirectional) edge
                 visualization_msgs::Marker edge_viz = edge_base_viz;
-                geometry_msgs::Point pt_viz1 = milestones[i].pt.viz(grid), pt_viz2 = milestones[j].pt.viz(grid);
+                geometry_msgs::Point pt_viz1 = milestones[i]->pt.viz(grid), pt_viz2 = milestones[j]->pt.viz(grid);
                 edge_viz.id = edges_viz.markers.size();
                 edge_viz.points.push_back(pt_viz1);
                 edge_viz.points.push_back(pt_viz2);
@@ -315,25 +334,100 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
         }
     }
 
+    ROS_INFO("%lu Possible path generated", edges_viz.markers.size());
+
     // implement A*
-    // auto sort_milestones_by_closeness = [&](const Node &n1, const Node &n2) {
-    //     double d1 = node_dist(milestones[i], n1);
-    //     double d2 = node_dist(milestones[i], n2);
-    //     return d1 < d2;
-    // };
+    auto a_star_cmp = [](const Node *n1, const Node *n2) {
+        return n1->f > n2->f;
+    };
 
-    // // find shortest path
-    // std::priority_queue<Node*> open_list;
+    // set default values
+    for (int i = 0; i < milestones.size(); i++){
+        milestones[i]->is_open = false;
+        milestones[i]->is_closed = false;
+        milestones[i]->prev = NULL;
+        milestones[i]->f = -1;
+        milestones[i]->g = -1;
+        milestones[i]->h = -1;
+    }
 
+    // find shortest path
+    std::vector<Node*> open_list;
+    bool path_found = false;
+    start_node->g = 0;
+    start_node->h = node_dist(start_node, end_node);
+    start_node->f = 0;
+    start_node->prev = NULL;
+    open_list.push_back(start_node);
+    std::make_heap(open_list.begin(), open_list.end(), a_star_cmp);
 
-    // hile
+    while (!open_list.empty()) {
+
+        // pop the element with least priority
+        Node *q  = open_list.front();
+        std::pop_heap(open_list.begin(), open_list.end(), a_star_cmp);
+        open_list.pop_back();
+
+        if (q->id == END_NODE_ID) {
+            path_found = true;
+            break;
+        }
+
+        q->is_closed = true;
+        q->is_open = false;
+
+        for (int i = 0; i < q->edges.size(); i++) {
+
+            Edge &e = q->edges[i];
+
+            Node *child = e.node_to;
+            double g = q->g + node_dist(q, child);
+
+            if (!child->is_closed) {
+
+                if (!child->is_open) {
+                    child->g = g;
+                    child->h = node_dist(child, end_node);
+                    child->f = child->g + child->h;
+                    child->is_open = true;
+                    child->is_closed = false;
+                    child->prev = q;
+
+                    open_list.push_back(child);
+                    std::push_heap(open_list.begin(), open_list.end(), a_star_cmp); // insert new element into priority queue
+                } else if (g < child->g) {
+                    child->g = g;
+                    child->h = node_dist(child, end_node);
+                    child->f = child->g + child->h;
+                    child->prev = q;
+                    std::make_heap(open_list.begin(), open_list.end(), a_star_cmp); // "decrease-key", update priority queue with new 
+                }
+            }
+        }
+    }
+
+    // // reconstruct the path
+    Node *temp_node = end_node;
+
+    while (temp_node != NULL) {
+        way_points.push_back(temp_node->pt);
+        path_viz.points.push_back(temp_node->pt.viz(grid));
+        temp_node = temp_node->prev;
+    }
+
+    std::reverse(way_points.begin(), way_points.end()); // reverse, so it is from the start node to the end node
+
+    // clean up allocated memory
+    for (int i = 0; i < milestones.size(); i++){
+        delete milestones[i];
+    }
 
     // publish visualization
     edges_pub.publish(edges_viz);
-    nodes_pub.publish(invalid_nodes_viz);
     nodes_pub.publish(valid_nodes_viz);
     nodes_pub.publish(start_node_viz);
     nodes_pub.publish(end_node_viz);
+    path_pub.publish(path_viz);
 
     ros::Time toc = ros::Time::now();
     ROS_INFO("PRM Completed in %f seconds", (toc - tic).toSec());
@@ -354,6 +448,7 @@ int main(int argc, char **argv)
     ros::Publisher velocity_publisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
     nodes_pub = n.advertise<visualization_msgs::Marker>("prm_nodes", 1, true);
     edges_pub = n.advertise<visualization_msgs::MarkerArray>("prm_edges", 1, true);
+    path_pub = n.advertise<visualization_msgs::Marker>("prm_path", 1, true);
     // marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1, true);
     
     //Velocity control variable
@@ -370,8 +465,8 @@ int main(int argc, char **argv)
         Point start, end;
         start.x = 0;
         start.y = 0;
-        end.x = 4;
-        end.y = 0;
+        end.x = 7.3;
+        end.y = -4.2;
         std::vector<Point> way_points;
         prm_find_path(occupancy_grid, start, end, way_points);
 
