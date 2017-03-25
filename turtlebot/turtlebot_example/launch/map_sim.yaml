@@ -1,0 +1,7 @@
+image: sim_map.pgm
+resolution: 0.1000
+origin: [-1.00000, -5.00000, 0.000000]
+negate: 0
+occupied_thresh: 0.5
+free_thresh: 0.1
+

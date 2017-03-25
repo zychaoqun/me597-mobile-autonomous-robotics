@@ -1,0 +1,7 @@
+image: live_map.pgm
+resolution: 0.0857
+origin: [-3.0000, -3.00000, 0.000000]
+negate: 0
+occupied_thresh: 0.5
+free_thresh: 0.1
+

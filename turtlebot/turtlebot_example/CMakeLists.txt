@@ -113,6 +113,9 @@ include_directories(
  add_executable(turtlebot_ips src/turtlebot_ips.cpp)
  add_executable(lab2_mapping src/lab2_mapping.cpp)
  add_executable(lab2_localization src/lab2_localization.cpp)
+ add_executable(lab3_prm src/lab3_prm.cpp)
+add_executable(lab3_vis_pose_publisher src/lab3_vis_pose_publisher.cpp)
+add_executable(lab3_sim_pose_publisher src/lab3_sim_pose_publisher.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -132,6 +135,15 @@ include_directories(
    ${catkin_LIBRARIES}
  )
  target_link_libraries(lab2_localization
+   ${catkin_LIBRARIES}
+ )
+ target_link_libraries(lab3_prm
+   ${catkin_LIBRARIES}
+ )
+ target_link_libraries(lab3_vis_pose_publisher
+   ${catkin_LIBRARIES}
+ )
+ target_link_libraries(lab3_sim_pose_publisher
    ${catkin_LIBRARIES}
  )
 
