@@ -4,8 +4,9 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Global Options1
+        - /Milestones (Graph Vertex)1
         - /Milestones (Graph Vertex)1/Namespaces1
-        - /Path (Edges)1/Namespaces1
       Splitter Ratio: 0.5
     Tree Height: 754
   - Class: rviz/Selection
@@ -47,15 +48,6 @@ Visualization Manager:
       Plane: XY
       Plane Cell Count: 20
       Reference Frame: <Fixed Frame>
-      Value: true
-    - Alpha: 0.7
-      Class: rviz/Map
-      Color Scheme: map
-      Draw Behind: false
-      Enabled: true
-      Name: Map
-      Topic: /map
-      Unreliable: false
       Value: true
     - Alpha: 1
       Class: rviz/RobotModel
@@ -239,6 +231,15 @@ Visualization Manager:
       Update Interval: 0
       Value: true
       Visual Enabled: true
+    - Alpha: 0.7
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Map
+      Topic: /map
+      Unreliable: false
+      Value: true
     - Class: rviz/TF
       Enabled: true
       Frame Timeout: 15
@@ -395,15 +396,6 @@ Visualization Manager:
               {}
       Update Interval: 0
       Value: true
-    - Class: rviz/Marker
-      Enabled: true
-      Marker Topic: /prm_nodes
-      Name: Milestones (Graph Vertex)
-      Namespaces:
-        invalid_nodes: true
-        valid_nodes: true
-      Queue Size: 100
-      Value: true
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /prm_edges
@@ -412,11 +404,22 @@ Visualization Manager:
         valid_nodes: true
       Queue Size: 1000
       Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /prm_nodes
+      Name: Milestones (Graph Vertex)
+      Namespaces:
+        end_node: true
+        invalid_nodes: true
+        start_node: true
+        valid_nodes: true
+      Queue Size: 10000
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
-    Frame Rate: 30
+    Frame Rate: 5
   Name: root
   Tools:
     - Class: rviz/Interact
@@ -444,11 +447,11 @@ Visualization Manager:
         Value: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 71.4615
+      Scale: 82.5524
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 4.91325
-      Y: -0.279325
+      X: 4.58269
+      Y: -0.367871
     Saved: ~
 Window Geometry:
   Displays:

@@ -154,25 +154,20 @@ double node_dist(const Node &n1, const Node &n2) {
 void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point end_pt, std::vector<Point> &way_points) {
 
     ros::Time tic = ros::Time::now();
-    int n_samples = 300;
-    int n_cloest_nodes = 5;
-    // double prm_gaussian_sample_std_dev = 0.5; // meters
+    int n_samples = 100;
+    int n_cloest_nodes = 10;
+    double prm_gaussian_sample_std_dev = 0.75; // meters
 
     // random generators
     std::random_device rd;
-    std::default_random_engine rng(0);
-    // std::normal_distribution<double> prm_gaussian_sample(0.0, prm_gaussian_sample_std_dev);
+    std::default_random_engine rng(812734019273);
+    std::normal_distribution<double> prm_gaussian_sample(0.0, prm_gaussian_sample_std_dev);
     std::uniform_int_distribution<int> width_dist(0, grid.info.width);
     std::uniform_int_distribution<int> height_dist(0, grid.info.height);
 
     std::vector<Node> milestones;
 
-    Node start_node, end_node;
-    start_node.pt = start_pt;
-    end_node.pt = end_pt;
-
-    visualization_msgs::Marker valid_nodes_viz;
-    visualization_msgs::Marker invalid_nodes_viz;
+    visualization_msgs::Marker valid_nodes_viz, invalid_nodes_viz, start_node_viz, end_node_viz;
     visualization_msgs::Marker edge_base_viz;
     visualization_msgs::MarkerArray edges_viz;
 
@@ -197,14 +192,42 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
     invalid_nodes_viz.color.g = 0.0;
     invalid_nodes_viz.color.b = 0.0;
 
+    start_node_viz = valid_nodes_viz;
+    start_node_viz.id = 2;
+    start_node_viz.ns = "start_node";
+    start_node_viz.scale.x = 0.25;
+    start_node_viz.scale.y = 0.25;
+    start_node_viz.scale.z = 0.25;
+    start_node_viz.color.r = 0.0;
+    start_node_viz.color.g = 0.0;
+    start_node_viz.color.b = 1.0;
+
+    end_node_viz = start_node_viz;
+    end_node_viz.id = 3;
+    end_node_viz.ns = "end_node";
+    end_node_viz.scale.x = 0.15;
+    end_node_viz.scale.y = 0.15;
+    end_node_viz.scale.z = 0.15;
+
     edge_base_viz = valid_nodes_viz;
     edge_base_viz.type = visualization_msgs::Marker::LINE_STRIP;
     edge_base_viz.action = visualization_msgs::Marker::ADD;
     edge_base_viz.color.r = 0.0;
-    edge_base_viz.color.g = 0.75;
+    edge_base_viz.color.g = 0.5;
     edge_base_viz.color.b = 0.0;
-    edge_base_viz.color.a = 0.75;
+    edge_base_viz.color.a = 0.25;
     edge_base_viz.scale.x = 0.02;
+
+    // add the start and end nodes
+    Node start_node, end_node;
+    start_node.pt.x = (start_pt.x - grid.info.origin.position.x) / grid.info.resolution;
+    start_node.pt.y = (start_pt.y - grid.info.origin.position.y) / grid.info.resolution;
+    end_node.pt.x = (end_pt.x - grid.info.origin.position.x) / grid.info.resolution;
+    end_node.pt.y = (end_pt.y - grid.info.origin.position.y) / grid.info.resolution;
+    milestones.push_back(start_node);
+    milestones.push_back(end_node);
+    start_node_viz.points.push_back(start_node.pt.viz(grid));
+    end_node_viz.points.push_back(end_node.pt.viz(grid));
 
     // generate milestones
     int n_gen = 0;
@@ -213,30 +236,44 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
         int y1 = height_dist(rng);
         int idx1 = grid.info.width * y1 + x1;
 
+        int x2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + x1;
+        int y2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + y1;
+        if (x2 < 0 || x2 > grid.info.width - 1 || y2 < 0 || y2 > grid.info.height - 1) {
+            continue;
+        }
+        int idx2 = grid.info.width * y2 + x2;
+
         Point pt;
+        if ((grid.data[idx1] < 50) && (grid.data[idx2] < 50)) {
+            continue;
+        }
+        else if ((grid.data[idx1] >= 50) && (grid.data[idx2] >= 50)) {
+            continue;
+        } else if (grid.data[idx1] < 50) {
+            pt.x = x1;
+            pt.y = y1;
+        } else if (grid.data[idx2] < 50) {
+            pt.x = x2;
+            pt.y = y2;
+        }
+
+        // Point pt;
         geometry_msgs::Point pt_viz;
-        pt.x = x1;
-        pt.y = y1;
+        // pt.x = x1;
+        // pt.y = y1;
         pt_viz = pt.viz(grid);
 
         // if cell is empty
-        if (grid.data[idx1] < 50) {
-            Node n;
-            n.pt = pt;
-            milestones.push_back(n);
-            n_gen++;
+        // if (grid.data[idx1] < 50) {
+        Node n;
+        n.pt = pt;
+        milestones.push_back(n);
+        n_gen++;
 
-            valid_nodes_viz.points.push_back(pt_viz); // visualization
-        } else {
-            invalid_nodes_viz.points.push_back(pt_viz); // visualization
-        }
-
-        // int x2 = (int) round(prm_gaussian_sample(rng) / grid_res) + x1;
-        // int y2 = (int) round(prm_gaussian_sample(rng) / grid_res) + y1;
-        // if (x2 < 0 || x2 > grid_width - 1 || y2 < 0 || grid ) {
-        //     continue
+        valid_nodes_viz.points.push_back(pt_viz); // visualization
+        // } else {
+        //     invalid_nodes_viz.points.push_back(pt_viz); // visualization
         // }
-        // int idx2 = grid_width * y2 + x2;
     }
 
     std::vector<Node> milestones_sorted = milestones;
@@ -278,13 +315,25 @@ void prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
         }
     }
 
-    // find shortest path
+    // implement A*
+    // auto sort_milestones_by_closeness = [&](const Node &n1, const Node &n2) {
+    //     double d1 = node_dist(milestones[i], n1);
+    //     double d2 = node_dist(milestones[i], n2);
+    //     return d1 < d2;
+    // };
 
+    // // find shortest path
+    // std::priority_queue<Node*> open_list;
+
+
+    // hile
 
     // publish visualization
-    nodes_pub.publish(valid_nodes_viz);
-    nodes_pub.publish(invalid_nodes_viz);
     edges_pub.publish(edges_viz);
+    nodes_pub.publish(invalid_nodes_viz);
+    nodes_pub.publish(valid_nodes_viz);
+    nodes_pub.publish(start_node_viz);
+    nodes_pub.publish(end_node_viz);
 
     ros::Time toc = ros::Time::now();
     ROS_INFO("PRM Completed in %f seconds", (toc - tic).toSec());
@@ -321,7 +370,7 @@ int main(int argc, char **argv)
         Point start, end;
         start.x = 0;
         start.y = 0;
-        end.x = 0;
+        end.x = 4;
         end.y = 0;
         std::vector<Point> way_points;
         prm_find_path(occupancy_grid, start, end, way_points);
