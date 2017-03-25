@@ -5,8 +5,12 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /RobotModel1
+        - /TF1/Frames1
+        - /TF1/Tree1/odom1
         - /Milestones (Graph Vertex)1/Namespaces1
         - /Shortest Path1
+        - /Robot Pose1
       Splitter Ratio: 0.5
     Tree Height: 754
   - Class: rviz/Selection
@@ -49,7 +53,7 @@ Visualization Manager:
       Plane Cell Count: 20
       Reference Frame: <Fixed Frame>
       Value: true
-    - Alpha: 1
+    - Alpha: 0.4
       Class: rviz/RobotModel
       Collision Enabled: false
       Enabled: true
@@ -257,7 +261,7 @@ Visualization Manager:
         base_footprint:
           Value: false
         base_link:
-          Value: true
+          Value: false
         camera_depth_frame:
           Value: false
         camera_depth_optical_frame:
@@ -431,11 +435,34 @@ Visualization Manager:
         path: true
       Queue Size: 100
       Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.1
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.3
+      Head Radius: 0.1
+      Name: Robot Pose
+      Shaft Length: 0.5
+      Shaft Radius: 0.05
+      Shape: Arrow
+      Topic: /robot_pose
+      Unreliable: false
+      Value: true
+    - Arrow Length: 0.3
+      Class: rviz/PoseArray
+      Color: 255; 25; 0
+      Enabled: false
+      Name: PoseArray
+      Topic: /particle_filter
+      Unreliable: false
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
-    Frame Rate: 5
+    Frame Rate: 30
   Name: root
   Tools:
     - Class: rviz/Interact
@@ -463,11 +490,11 @@ Visualization Manager:
         Value: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 97.1849
+      Scale: 189.38
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 3.46295
-      Y: -0.371204
+      X: 2.00484
+      Y: 3.46323
     Saved: ~
 Window Geometry:
   Displays:

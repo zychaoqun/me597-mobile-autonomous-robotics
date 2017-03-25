@@ -20,8 +20,8 @@
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
 ros::Publisher pose_publisher;
-tf::TransformBroadcaster *br;
-tf::Transform *tform;
+// tf::TransformBroadcaster *br;
+// tf::Transform *tform;
 
 //Callback function for the Position topic (SIMULATION)
 void pose_callback(const gazebo_msgs::ModelStates& msg)
@@ -34,15 +34,15 @@ void pose_callback(const gazebo_msgs::ModelStates& msg)
 	curpose.pose.pose.orientation = msg.pose[1].orientation;
 	pose_publisher.publish(curpose);
 
-	// send transform
-	br = new tf::TransformBroadcaster;
-	tform = new tf::Transform;
-	tform->setOrigin( tf::Vector3(msg.pose[1].position.x, msg.pose[1].position.y, 0) );
-	tf::Quaternion q;
-	q.setEulerZYX(tf::getYaw(msg.pose[1].orientation), 0, 0);
-	tform->setRotation( q );
-	*tform = tform->inverse();
-	br->sendTransform(tf::StampedTransform(*tform, ros::Time::now(), "base_footprint", "map"));
+	// // send transform
+	// br = new tf::TransformBroadcaster;
+	// tform = new tf::Transform;
+	// tform->setOrigin( tf::Vector3(msg.pose[1].position.x, msg.pose[1].position.y, 0) );
+	// tf::Quaternion q;
+	// q.setEulerZYX(tf::getYaw(msg.pose[1].orientation), 0, 0);
+	// tform->setRotation( q );
+	// *tform = tform->inverse();
+	// br->sendTransform(tf::StampedTransform(*tform, ros::Time::now(), "base_footprint", "map"));
 }
 
 
@@ -58,7 +58,7 @@ int main(int argc, char **argv)
   
 
     //Set the loop rate
-    ros::Rate loop_rate(40);    //40Hz update rate
+    ros::Rate loop_rate(1);    //40Hz update rate
 	
 
     while (ros::ok())

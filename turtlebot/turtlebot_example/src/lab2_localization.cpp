@@ -44,27 +44,30 @@ bool init_odom = false;
 nav_msgs::Odometry odom_curr;
 nav_msgs::Odometry odom_prev;
 
+tf::TransformBroadcaster *br;
+tf::Transform *tform;
+
 
 //Callback function for the Position topic (SIMULATION)
-void pose_gazebo_callback(const gazebo_msgs::ModelStates& msg) 
-{
+// void pose_gazebo_callback(const gazebo_msgs::ModelStates& msg) 
+// {
 
-    int i;
-    for(i = 0; i < msg.name.size(); i++) if(msg.name[i] == "mobile_base") break;
+//     int i;
+//     for(i = 0; i < msg.name.size(); i++) if(msg.name[i] == "mobile_base") break;
 
-    ips_x = msg.pose[i].position.x ;
-    ips_y = msg.pose[i].position.y ;
-    ips_yaw = tf::getYaw(msg.pose[i].orientation);
+//     ips_x = msg.pose[i].position.x ;
+//     ips_y = msg.pose[i].position.y ;
+//     ips_yaw = tf::getYaw(msg.pose[i].orientation);
 
-    if (init_pose == false) {
-        init_pose = true;
-        ips_x0 = ips_x;
-        ips_y0 = ips_y;
-        ips_yaw0 = ips_yaw;
-    }
+//     if (init_pose == false) {
+//         init_pose = true;
+//         ips_x0 = ips_x;
+//         ips_y0 = ips_y;
+//         ips_yaw0 = ips_yaw;
+//     }
 
-    new_pose = true;
-}
+//     new_pose = true;
+// }
 
 //Callback function for the Position topic (LIVE)
 
@@ -114,7 +117,7 @@ int main(int argc, char **argv)
     ros::NodeHandle n;
 
     //Subscribe to the desired topics and assign callbacks
-    ros::Subscriber pose_gazebo_sub = n.subscribe("/gazebo/model_states", 1, pose_gazebo_callback);
+    // ros::Subscriber pose_gazebo_sub = n.subscribe("/gazebo/model_states", 1, pose_gazebo_callback);
     ros::Subscriber pose_ips_sub = n.subscribe("/indoor_pos", 1, pose_ips_callback);
 
     ros::Subscriber odom_sub = n.subscribe("/odom", 1, odom_callback);
@@ -124,7 +127,7 @@ int main(int argc, char **argv)
     ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("/robot_pose", 1);
     ros::Publisher ips_pub = n.advertise<geometry_msgs::PoseStamped>("/ips_pose", 1);
 
-    int num_particles = 100;
+    int num_particles = 200;
 
     // Q Matrix
     // double Q_std_x = sqrt(0.1); //m
@@ -350,6 +353,16 @@ int main(int argc, char **argv)
 
         filter_pub.publish(particle_vis);
         pose_pub.publish(pose_stamped);
+
+        // send transform
+        br = new tf::TransformBroadcaster;
+        tform = new tf::Transform;
+        tform->setOrigin( tf::Vector3(mean_x, mean_y, 0) );
+        tf::Quaternion q;
+        q.setEulerZYX(mean_yaw, 0, 0);
+        tform->setRotation( q );
+        *tform = tform->inverse();
+        br->sendTransform(tf::StampedTransform(*tform, ros::Time::now(), "base_footprint", "map"));
 
     }
 

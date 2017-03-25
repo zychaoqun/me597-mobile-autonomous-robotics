@@ -43,14 +43,24 @@ const double PRM_GAUSSIAN_STD_DEV = 0.25; // meters
 
 //Callback function for the Position topic (LIVE)
 
-void pose_callback(const geometry_msgs::PoseWithCovarianceStamped & msg)
-{
-	//This function is called when a new position message is received
-	double X = msg.pose.pose.position.x; // Robot X psotition
-	double Y = msg.pose.pose.position.y; // Robot Y psotition
- 	double Yaw = tf::getYaw(msg.pose.pose.orientation); // Robot Yaw
+// void pose_callback(const geometry_msgs::PoseWithCovarianceStamped & msg)
+// {
+// 	//This function is called when a new position message is received
+// 	double X = msg.pose.pose.position.x; // Robot X psotition
+// 	double Y = msg.pose.pose.position.y; // Robot Y psotition
+//  	double Yaw = tf::getYaw(msg.pose.pose.orientation); // Robot Yaw
 
-	std::cout << "X: " << X << ", Y: " << Y << ", Yaw: " << Yaw << std::endl ;
+// 	std::cout << "X: " << X << ", Y: " << Y << ", Yaw: " << Yaw << std::endl ;
+// }
+
+void pose_callback(const geometry_msgs::PoseStamped & msg)
+{
+    //This function is called when a new position message is received
+    double X = msg.pose.position.x; // Robot X psotition
+    double Y = msg.pose.position.y; // Robot Y psotition
+    double Yaw = tf::getYaw(msg.pose.orientation); // Robot Yaw
+
+    std::cout << "X: " << X << ", Y: " << Y << ", Yaw: " << Yaw << std::endl;
 }
 
 //Callback function for the map
@@ -472,7 +482,8 @@ int main(int argc, char **argv)
 
     //Subscribe to the desired topics and assign callbacks
     ros::Subscriber map_sub = n.subscribe("/map", 1, map_callback);
-    ros::Subscriber pose_sub = n.subscribe("/indoor_pos", 1, pose_callback);
+    // ros::Subscriber pose_sub = n.subscribe("/indoor_pos", 1, pose_callback);
+    ros::Subscriber pose_sub = n.subscribe("/robot_pose", 1, pose_callback);
 
     //Setup topics to Publish from this node
     ros::Publisher velocity_publisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
