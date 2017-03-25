@@ -35,6 +35,11 @@ ros::Publisher edges_pub;
 ros::Publisher path_pub;
 nav_msgs::OccupancyGrid occupancy_grid;
 
+const double OBSTABLE_INFLATION = 0.3; // m
+const int COLLISION_SAMPLE_EVERY = 1;
+const int PRM_N_SAMPLES = 300;
+const int PRM_N_TRY_CLOSEST_NODES = 10;
+const double PRM_GAUSSIAN_STD_DEV = 0.25; // meters
 
 //Callback function for the Position topic (LIVE)
 
@@ -132,15 +137,44 @@ void bresenham(int x0, int y0, int x1, int y1, std::vector<int>& x, std::vector<
     }
 }
 
+void inflate_obstables(const nav_msgs::OccupancyGrid &grid, nav_msgs::OccupancyGrid &grid_inflated) {
+
+    grid_inflated = grid;
+
+    int dilate_amount = round(OBSTABLE_INFLATION / grid.info.resolution);
+
+    for (int x = 0; x < grid.info.width; x++) {
+        for (int y = 0; y < grid.info.height; y++) {
+
+            if (grid.data[grid.info.width * y + x] < 50) {
+                continue;
+            }
+
+            for (int i = -dilate_amount; i <= dilate_amount; i++) {
+                for (int j = -dilate_amount; j <= dilate_amount; j++) {
+
+                    int x_d = x + i;
+                    int y_d = y + j;
+
+                    if (x_d < 0 || x_d > grid.info.width - 1 || y_d < 0 || y_d > grid.info.height - 1) {
+                        continue;
+                    }
+
+                    grid_inflated.data[grid.info.width * y_d + x_d] = 100;
+                }
+            }
+        }
+    }
+
+}
+
 bool check_collision(const nav_msgs::OccupancyGrid &grid, Point start, Point end) {
     std::vector<int> x;
     std::vector<int> y;
 
-    int SAMPLE_EVERY_OTHER = 1;
-
     bresenham(start.x, start.y, end.x, end.y, x, y);
 
-    for (int i = 0; i < x.size(); i+=SAMPLE_EVERY_OTHER) {
+    for (int i = 0; i < x.size(); i+=COLLISION_SAMPLE_EVERY) {
         int idx = grid.info.width * y[i] + x[i];
 
         // if there is a collision
@@ -159,10 +193,6 @@ double node_dist(const Node *n1, const Node *n2) {
 
 bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point end_pt, std::vector<Point> &way_points) {
     ros::Time tic = ros::Time::now();
-
-    const int N_SAMPLES = 300;
-    const int N_TRY_CLOSEST_NODES = 5;
-    const double PRM_GAUSSIAN_STD_DEV = 0.5; // meters
 
     // random generators
     std::random_device rd;
@@ -229,10 +259,10 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
 
     // add the start and end nodes
     Node *start_node = new Node(), *end_node = new Node();
-    start_node->pt.x = (start_pt.x - grid.info.origin.position.x) / grid.info.resolution;
-    start_node->pt.y = (start_pt.y - grid.info.origin.position.y) / grid.info.resolution;
-    end_node->pt.x = (end_pt.x - grid.info.origin.position.x) / grid.info.resolution;
-    end_node->pt.y = (end_pt.y - grid.info.origin.position.y) / grid.info.resolution;
+    start_node->pt.x = round((start_pt.x - grid.info.origin.position.x) / grid.info.resolution);
+    start_node->pt.y = round((start_pt.y - grid.info.origin.position.y) / grid.info.resolution);
+    end_node->pt.x = round((end_pt.x - grid.info.origin.position.x) / grid.info.resolution);
+    end_node->pt.y = round((end_pt.y - grid.info.origin.position.y) / grid.info.resolution);
 
     const int START_NODE_ID = 0, END_NODE_ID = 1;
     start_node->id = START_NODE_ID;
@@ -248,39 +278,39 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
 
     // generate milestones
     int n_gen = 0;
-    while (n_gen < N_SAMPLES) {
+    while (n_gen < PRM_N_SAMPLES) {
         int x1 = width_dist(rng);
         int y1 = height_dist(rng);
         int idx1 = grid.info.width * y1 + x1;
 
-        if (grid.data[idx1] > 50) {
-            continue;
-        }
-
-        Point pt;
-        pt.x = x1;
-        pt.y = y1;
-
-        // int x2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + x1;
-        // int y2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + y1;
-        // if (x2 < 0 || x2 > grid.info.width - 1 || y2 < 0 || y2 > grid.info.height - 1) {
+        // if (grid.data[idx1] > 50) {
         //     continue;
         // }
-        // int idx2 = grid.info.width * y2 + x2;
 
         // Point pt;
-        // if ((grid.data[idx1] < 50) && (grid.data[idx2] < 50)) {
-        //     continue;
-        // }
-        // else if ((grid.data[idx1] >= 50) && (grid.data[idx2] >= 50)) {
-        //     continue;
-        // } else if (grid.data[idx1] < 50) {
-        //     pt.x = x1;
-        //     pt.y = y1;
-        // } else if (grid.data[idx2] < 50) {
-        //     pt.x = x2;
-        //     pt.y = y2;
-        // }
+        // pt.x = x1;
+        // pt.y = y1;
+
+        int x2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + x1;
+        int y2 = (int) round(prm_gaussian_sample(rng) / grid.info.resolution) + y1;
+        if (x2 < 0 || x2 > grid.info.width - 1 || y2 < 0 || y2 > grid.info.height - 1) {
+            continue;
+        }
+        int idx2 = grid.info.width * y2 + x2;
+
+        Point pt;
+        if ((grid.data[idx1] < 50) && (grid.data[idx2] < 50)) {
+            continue;
+        }
+        else if ((grid.data[idx1] >= 50) && (grid.data[idx2] >= 50)) {
+            continue;
+        } else if (grid.data[idx1] < 50) {
+            pt.x = x1;
+            pt.y = y1;
+        } else if (grid.data[idx2] < 50) {
+            pt.x = x2;
+            pt.y = y2;
+        }
 
         geometry_msgs::Point pt_viz;
         pt_viz = pt.viz(grid);
@@ -306,7 +336,7 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
         
         std::sort(milestones.begin(), milestones.begin() + i, sort_milestones_by_closeness);
 
-        for (int j = 0; j < std::min(i, N_TRY_CLOSEST_NODES); j++) {
+        for (int j = 0; j < std::min(i, PRM_N_TRY_CLOSEST_NODES); j++) {
             // check if edge has a collision
             if (check_collision(grid, milestones[i]->pt, milestones[j]->pt)) {
                 Edge e1, e2;
@@ -449,6 +479,7 @@ int main(int argc, char **argv)
     nodes_pub = n.advertise<visualization_msgs::Marker>("prm_nodes", 1, true);
     edges_pub = n.advertise<visualization_msgs::MarkerArray>("prm_edges", 1, true);
     path_pub = n.advertise<visualization_msgs::Marker>("prm_path", 1, true);
+    ros::Publisher map_inflated_pub = n.advertise<nav_msgs::OccupancyGrid>("map_inflated", 1, true);
     // marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1, true);
     
     //Velocity control variable
@@ -465,16 +496,20 @@ int main(int argc, char **argv)
         Point start, end;
         start.x = 0;
         start.y = 0;
-        end.x = 7.3;
-        end.y = -4.2;
+        end.x = 8;
+        end.y = -4;
         std::vector<Point> way_points;
-        prm_find_path(occupancy_grid, start, end, way_points);
 
+        nav_msgs::OccupancyGrid inflated_grid;
+        inflate_obstables(occupancy_grid, inflated_grid);
+        prm_find_path(inflated_grid, start, end, way_points);
 
     	// velocity_publisher.publish(vel); // Publish the command velocity
 
 
         ROS_INFO("Hello");
+
+        map_inflated_pub.publish(inflated_grid);
     }
 
     return 0;

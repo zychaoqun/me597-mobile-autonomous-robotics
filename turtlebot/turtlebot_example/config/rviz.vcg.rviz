@@ -5,9 +5,8 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /Milestones (Graph Vertex)1
         - /Milestones (Graph Vertex)1/Namespaces1
-        - /Path1
+        - /Shortest Path1
       Splitter Ratio: 0.5
     Tree Height: 754
   - Class: rviz/Selection
@@ -241,6 +240,15 @@ Visualization Manager:
       Topic: /map
       Unreliable: false
       Value: true
+    - Alpha: 0.7
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Map Inflated
+      Topic: /map_inflated
+      Unreliable: false
+      Value: true
     - Class: rviz/TF
       Enabled: true
       Frame Timeout: 15
@@ -411,13 +419,14 @@ Visualization Manager:
       Name: Milestones (Graph Vertex)
       Namespaces:
         end_node: true
+        start_node: true
         valid_nodes: true
       Queue Size: 10000
       Value: true
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /prm_path
-      Name: Path
+      Name: Shortest Path
       Namespaces:
         path: true
       Queue Size: 100
@@ -454,11 +463,11 @@ Visualization Manager:
         Value: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 61.1582
+      Scale: 97.1849
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 5.33016
-      Y: 0.77169
+      X: 3.46295
+      Y: -0.371204
     Saved: ~
 Window Geometry:
   Displays:
