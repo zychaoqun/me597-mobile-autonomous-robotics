@@ -233,7 +233,7 @@ Visualization Manager:
     - Alpha: 0.7
       Class: rviz/Map
       Color Scheme: map
-      Draw Behind: false
+      Draw Behind: true
       Enabled: true
       Name: Map
       Topic: /map
@@ -485,11 +485,11 @@ Visualization Manager:
         Value: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 326.856
+      Scale: 165.88
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 0.616674
-      Y: 0.455174
+      X: 0.523373
+      Y: 0.483281
     Saved: ~
 Window Geometry:
   Displays:

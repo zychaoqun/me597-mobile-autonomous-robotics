@@ -279,7 +279,7 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
 
     // random generators
     std::random_device rd;
-    std::default_random_engine rng(0);
+    std::default_random_engine rng(rd());
     std::normal_distribution<double> prm_gaussian_sample(0.0, PRM_GAUSSIAN_STD_DEV);
     std::uniform_int_distribution<int> width_dist(0, grid.info.width);
     std::uniform_int_distribution<int> height_dist(0, grid.info.height);
@@ -567,7 +567,7 @@ int main(int argc, char **argv)
     ros::Subscriber pose_sub = n.subscribe("/robot_pose", 1, pose_callback);
 
     //Setup topics to Publish from this node
-    ros::Publisher velocity_publisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
+    ros::Publisher velocity_pub = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
     nodes_pub = n.advertise<visualization_msgs::Marker>("prm_nodes", 1, true);
     edges_pub = n.advertise<visualization_msgs::MarkerArray>("prm_edges", 1, true);
     path_pub = n.advertise<visualization_msgs::Marker>("prm_path", 1, true);
@@ -650,10 +650,11 @@ int main(int argc, char **argv)
         else if (state == STATE_NAVIGATION_TO_TARGET) {
             
             Point carrot, perp_point;
+            double pose_x = x_est, pose_y = y_est, pose_yaw = yaw_est;
 
             Leg &curr_leg = way_legs[leg_idx];
 
-            curr_leg.perp_point_on_leg(Point(x_est, y_est, 0), perp_point);
+            curr_leg.perp_point_on_leg(Point(pose_x, pose_y, 0), perp_point);
 
             // find direction vector of the leg
             double dir_x = curr_leg.end.x - perp_point.x;
@@ -675,7 +676,65 @@ int main(int argc, char **argv)
                 leg_idx++;
             }
 
-            ROS_INFO("Pose:(x=%f,y=%f,th=%f), leg=%d, ", x_est, y_est, yaw_est*180/M_PI, leg_idx);
+            // ========== P CONTROLS =============
+            const double MAX_ANGULAR_VEL = 1.0;
+            const double MAX_LINEAR_VEL = 0.2;
+            const double P_ANG = 1.0;
+            const double P_LIN = 0.5;
+            const double HEAD_ERROR_NO_LINEAR_VEL = 30.0 / 180.0 * M_PI;
+            const double TARGET_REACHED_TOL = 0.15;
+
+            double cross_track_error = point_dist(perp_point, Point(pose_x, pose_y, 0));
+            double dir_carrot_x = carrot.x - pose_x;
+            double dir_carrot_y = carrot.y - pose_y;
+            double carrot_dist = sqrt(dir_carrot_x * dir_carrot_x + dir_carrot_y * dir_carrot_y);
+            double heading_carrot = atan2(dir_carrot_y, dir_carrot_x);
+            double heading_err = heading_carrot - pose_yaw;
+
+            // keep error between -180 to 180 degrees
+            if (heading_err > M_PI) {
+                heading_err -= 2 * M_PI;
+            } else if (heading_err < -M_PI) {
+                heading_err += 2 * M_PI;
+            }
+
+
+            double lin_vel = carrot_dist * P_LIN;
+            double ang_vel = heading_err * P_ANG;
+
+            // turn on the spot if angular error is too big
+            if (fabs(heading_err) > HEAD_ERROR_NO_LINEAR_VEL) {
+                ROS_INFO("hello %f, %f", fabs(heading_err), HEAD_ERROR_NO_LINEAR_VEL);
+                lin_vel = 0;
+            }
+
+            if (lin_vel > MAX_LINEAR_VEL) {
+                lin_vel = MAX_LINEAR_VEL;
+            }
+
+            if (ang_vel > MAX_ANGULAR_VEL) {
+                ang_vel = MAX_ANGULAR_VEL;
+            }
+
+            if (curr_leg.is_last_leg && point_dist(curr_leg.end, Point(pose_x, pose_y, 0)) < TARGET_REACHED_TOL) {
+                ROS_WARN("TARGET_REACHED!");
+                ang_vel = 0;
+                lin_vel = 0;
+                state = STATE_TARGET_REACHED;
+                ROS_WARN("Switching to STATE_TARGET_REACHED!");
+            }
+
+            vel.linear.x = lin_vel;
+            vel.linear.y = 0;
+            vel.linear.z = 0;
+            vel.angular.x = 0;
+            vel.angular.y = 0;
+            vel.angular.z = ang_vel;
+
+            velocity_pub.publish(vel);
+
+            ROS_INFO("Pose:(x=%f,y=%f,th=%f), leg_id=%d, xt_err=%f, carrot_dist=%f, heading_err=%f, lin_vel=%f, ang_vel=%f",
+                pose_x, pose_y, pose_yaw*180.0/M_PI, leg_idx, cross_track_error, carrot_dist, heading_err, lin_vel, ang_vel);
 
             // visualization
             visualization_msgs::Marker carrot_viz, perp_point_viz;
@@ -685,9 +744,9 @@ int main(int argc, char **argv)
             carrot_viz.type = visualization_msgs::Marker::SPHERE_LIST;
             carrot_viz.action = visualization_msgs::Marker::ADD;
             carrot_viz.ns = "carrot";
-            carrot_viz.scale.x = 0.1;
-            carrot_viz.scale.y = 0.1;
-            carrot_viz.scale.z = 0.1;
+            carrot_viz.scale.x = 0.15;
+            carrot_viz.scale.y = 0.15;
+            carrot_viz.scale.z = 0.15;
             carrot_viz.color.r = 1.0;
             carrot_viz.color.g = 0.4;
             carrot_viz.color.b = 0.0;
@@ -709,7 +768,7 @@ int main(int argc, char **argv)
 
         }
         else if (state == STATE_TARGET_REACHED) {
-
+            ROS_WARN("state = STATE_TARGET_REACHED");
         }      
         
 
