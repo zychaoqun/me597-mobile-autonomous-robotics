@@ -160,7 +160,8 @@ int main(int argc, char **argv)
     std::uniform_real_distribution<double> uniform_dist(0.0, 1.0);
 
     ros::Time time = ros::Time::now();
-    std::string frame = "odom";
+    // std::string frame = "odom"; // uncomment this for lab2
+    std::string frame = "map";
     geometry_msgs::PoseArray particle_vis;
     particle_vis.header.seq = 0;
     particle_vis.header.stamp.sec = time.sec;

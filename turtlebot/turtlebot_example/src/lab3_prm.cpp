@@ -626,7 +626,8 @@ int main(int argc, char **argv)
             ROS_WARN("state = STATE_FIND_PATH_TO_TARGET");
 
             way_points.clear(); // clear way points list
-            way_legs.clear(); 
+            way_legs.clear();
+            leg_idx = 0;
             prm_find_path(inflated_grid, Point(x_est, y_est, yaw_est), target, way_points);
 
             // create way_points.size() - 1 legs
@@ -679,8 +680,8 @@ int main(int argc, char **argv)
             // ========== P CONTROLS =============
             const double MAX_ANGULAR_VEL = 1.0;
             const double MAX_LINEAR_VEL = 0.2;
-            const double P_ANG = 1.0;
-            const double P_LIN = 0.5;
+            const double P_ANG = 2.0;
+            const double P_LIN = 1.0;
             const double HEAD_ERROR_NO_LINEAR_VEL = 30.0 / 180.0 * M_PI;
             const double TARGET_REACHED_TOL = 0.15;
 
@@ -769,6 +770,8 @@ int main(int argc, char **argv)
         }
         else if (state == STATE_TARGET_REACHED) {
             ROS_WARN("state = STATE_TARGET_REACHED");
+            state = STATE_IDLE;
+            ROS_WARN("Switching to STATE_IDLE!");
         }      
         
 
