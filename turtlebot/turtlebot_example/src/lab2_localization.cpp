@@ -127,15 +127,15 @@ int main(int argc, char **argv)
     ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("/robot_pose", 1);
     ros::Publisher ips_pub = n.advertise<geometry_msgs::PoseStamped>("/ips_pose", 1);
 
-    int num_particles = 200;
+    int num_particles = 500;
 
     // Q Matrix
     // double Q_std_x = sqrt(0.1); //m
     // double Q_std_y = Q_std_x; 
     // double Q_std_yaw = sqrt(0.05); //rad
-    double Q_std_x = 0.003; //m
+    double Q_std_x = 0.05; //m
     double Q_std_y = Q_std_x; 
-    double Q_std_yaw = 0.0174533; //rad
+    double Q_std_yaw = 0.09; //rad
 
     // R Matrix
     double R_std_x = 0.1; //m
@@ -355,14 +355,14 @@ int main(int argc, char **argv)
         pose_pub.publish(pose_stamped);
 
         // send transform
-        br = new tf::TransformBroadcaster;
-        tform = new tf::Transform;
-        tform->setOrigin( tf::Vector3(mean_x, mean_y, 0) );
-        tf::Quaternion q;
-        q.setEulerZYX(mean_yaw, 0, 0);
-        tform->setRotation( q );
-        *tform = tform->inverse();
-        br->sendTransform(tf::StampedTransform(*tform, ros::Time::now(), "base_footprint", "map"));
+        // br = new tf::TransformBroadcaster;
+        // tform = new tf::Transform;
+        // tform->setOrigin( tf::Vector3(mean_x, mean_y, 0) );
+        // tf::Quaternion q;
+        // q.setEulerZYX(mean_yaw, 0, 0);
+        // tform->setRotation( q );
+        // *tform = tform->inverse();
+        // br->sendTransform(tf::StampedTransform(*tform, ros::Time::now(), "base_footprint", "map"));
 
     }
 

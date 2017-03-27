@@ -4,13 +4,8 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /Global Options1
-        - /RobotModel1
         - /TF1/Frames1
-        - /TF1/Tree1/odom1
         - /Milestones (Graph Vertex)1/Namespaces1
-        - /Shortest Path1
-        - /Robot Pose1
       Splitter Ratio: 0.5
     Tree Height: 754
   - Class: rviz/Selection
@@ -423,7 +418,6 @@ Visualization Manager:
       Name: Milestones (Graph Vertex)
       Namespaces:
         end_node: true
-        start_node: true
         valid_nodes: true
       Queue Size: 10000
       Value: true
@@ -450,14 +444,15 @@ Visualization Manager:
       Topic: /robot_pose
       Unreliable: false
       Value: true
-    - Arrow Length: 0.3
-      Class: rviz/PoseArray
-      Color: 255; 25; 0
-      Enabled: false
-      Name: PoseArray
-      Topic: /particle_filter
-      Unreliable: false
-      Value: false
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /prm_nav_carrot
+      Name: Carrot
+      Namespaces:
+        carrot: true
+        perp_point: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -490,11 +485,11 @@ Visualization Manager:
         Value: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 189.38
+      Scale: 326.856
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 2.00484
-      Y: 3.46323
+      X: 0.616674
+      Y: 0.455174
     Saved: ~
 Window Geometry:
   Displays:

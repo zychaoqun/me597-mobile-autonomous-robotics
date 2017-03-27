@@ -41,6 +41,11 @@ const int PRM_N_SAMPLES = 300;
 const int PRM_N_TRY_CLOSEST_NODES = 10;
 const double PRM_GAUSSIAN_STD_DEV = 0.25; // meters
 
+double x_est, y_est, yaw_est;
+
+int init_pose = false;
+int init_map = false;
+
 //Callback function for the Position topic (LIVE)
 
 // void pose_callback(const geometry_msgs::PoseWithCovarianceStamped & msg)
@@ -60,7 +65,13 @@ void pose_callback(const geometry_msgs::PoseStamped & msg)
     double Y = msg.pose.position.y; // Robot Y psotition
     double Yaw = tf::getYaw(msg.pose.orientation); // Robot Yaw
 
-    std::cout << "X: " << X << ", Y: " << Y << ", Yaw: " << Yaw << std::endl;
+    // std::cout << "X: " << X << ", Y: " << Y << ", Yaw: " << Yaw << std::endl;
+
+    x_est = X;
+    y_est = Y;
+    yaw_est = Yaw;
+
+    init_pose = true;
 }
 
 //Callback function for the map
@@ -71,11 +82,14 @@ void map_callback(const nav_msgs::OccupancyGrid& msg)
     //you probably want to save the map into a form which is easy to work with
 
     occupancy_grid = msg;
+
+    init_map = true;
 }
 
 struct Point {
     double x;
     double y;
+    double th;
 
     geometry_msgs::Point viz(const nav_msgs::OccupancyGrid& grid) {
         geometry_msgs::Point pt;
@@ -83,7 +97,45 @@ struct Point {
         pt.y = y * grid.info.resolution + grid.info.origin.position.y;
         pt.z = 0;
         return pt;
-    } 
+    }
+
+    geometry_msgs::Point viz() {
+        geometry_msgs::Point pt;
+        pt.x = x;
+        pt.y = y;
+        pt.z = 0;
+        return pt;
+    }
+
+    Point() {}
+
+    Point(double x_in, double y_in, double th_in) {
+        x = x_in;
+        y = y_in;
+        th = th_in;
+    }
+};
+
+// Leg in a way point
+struct Leg {
+    Point start;
+    Point end;
+
+    bool is_first_leg;
+    bool is_last_leg;
+
+    void perp_point_on_leg(const Point &p, Point &perp_p) {
+        Point &a = start, &b = end;
+        double k = ((b.y-a.y) * (p.x-a.x) - (b.x-a.x) * (p.y-a.y)) / ((b.y-a.y)*(b.y-a.y) + (b.x-a.x)*(b.x-a.x));
+        perp_p.x = p.x - k * (b.y-a.y);
+        perp_p.y = p.y + k * (b.x-a.x);
+    }
+
+    // double dist_from_leg(const Point &p) {
+    //     point c;
+    //     perp_point_on_leg(p, c);
+    //     return sqrt((p.x - c.x) * (p.x - c.x) + (p.y - c.y)*(p.y - c.y));
+    // }
 };
 
 struct Node;
@@ -196,9 +248,28 @@ bool check_collision(const nav_msgs::OccupancyGrid &grid, Point start, Point end
     return true;
 }
 
+// check if a point belongs to this leg
+bool is_between_two_points_on_a_line(const Point &a, const Point &b, const Point &c) {
+    const double EPSILON = 1e-5;
+
+    // Point &a = start, &b = end, &c = p;
+    // perp_point_on_leg(p, c);
+
+    double dist_ab = sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y)*(a.y - b.y));
+    double dist_ac = sqrt((a.x - c.x) * (a.x - c.x) + (a.y - c.y)*(a.y - c.y));
+    double dist_cb = sqrt((c.x - b.x) * (c.x - b.x) + (c.y - b.y)*(c.y - b.y));
+
+    return fabs(dist_ab - (dist_ac + dist_cb)) < EPSILON;
+}
+
+double point_dist(const Point &p1, const Point &p2) {
+    return sqrt((p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y));
+}
+
 double node_dist(const Node *n1, const Node *n2) {
     // std::cout << sqrt((n1.pt.x - n2.pt.x) * (n1.pt.x - n2.pt.x) + (n1.pt.y - n2.pt.y) * (n1.pt.y - n2.pt.y)) << std::endl;
-    return sqrt((n1->pt.x - n2->pt.x) * (n1->pt.x - n2->pt.x) + (n1->pt.y - n2->pt.y) * (n1->pt.y - n2->pt.y));
+    // return sqrt((n1->pt.x - n2->pt.x) * (n1->pt.x - n2->pt.x) + (n1->pt.y - n2->pt.y) * (n1->pt.y - n2->pt.y));
+    return point_dist(n1->pt, n2->pt);
 }
 
 bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point end_pt, std::vector<Point> &way_points) {
@@ -286,6 +357,8 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
     milestones.push_back(start_node);
     milestones.push_back(end_node);
 
+    ROS_INFO("Finding path from (%f, %f) to (%f, %f)", start_pt.x, start_pt.y, end_pt.x, end_pt.y);
+
     // generate milestones
     int n_gen = 0;
     while (n_gen < PRM_N_SAMPLES) {
@@ -334,7 +407,7 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
         valid_nodes_viz.points.push_back(pt_viz); // visualization
     }
 
-    ROS_INFO("%lu milestones", milestones.size());
+    ROS_INFO("Total of %lu milestones generated (incl. start & end)", milestones.size());
 
     for (int i = 0; i < milestones.size(); i++) {
 
@@ -374,7 +447,7 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
         }
     }
 
-    ROS_INFO("%lu Possible path generated", edges_viz.markers.size());
+    ROS_INFO("Total of %lu possible edges generated", edges_viz.markers.size());
 
     // implement A*
     auto a_star_cmp = [](const Node *n1, const Node *n2) {
@@ -450,7 +523,13 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
     Node *temp_node = end_node;
 
     while (temp_node != NULL) {
-        way_points.push_back(temp_node->pt);
+        // convert from map coordinates to the actual p
+        Point pt;
+        pt.x = temp_node->pt.x * grid.info.resolution + grid.info.origin.position.x;
+        pt.y = temp_node->pt.y * grid.info.resolution + grid.info.origin.position.y;
+        pt.th = 0;
+
+        way_points.push_back(pt);
         path_viz.points.push_back(temp_node->pt.viz(grid));
         temp_node = temp_node->prev;
     }
@@ -491,34 +570,155 @@ int main(int argc, char **argv)
     edges_pub = n.advertise<visualization_msgs::MarkerArray>("prm_edges", 1, true);
     path_pub = n.advertise<visualization_msgs::Marker>("prm_path", 1, true);
     ros::Publisher map_inflated_pub = n.advertise<nav_msgs::OccupancyGrid>("map_inflated", 1, true);
-    // marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1, true);
+    ros::Publisher carrot_pub = n.advertise<visualization_msgs::Marker>("prm_nav_carrot", 1);
     
     //Velocity control variable
     geometry_msgs::Twist vel;
 
+    // target locations
+    std::vector<Point> targets = {Point(4.0, 0, 0), Point(8.0, -4.0, 3.14), Point(8.0, 0.0, -1.57)};
+    // std::vector<Point> targets = {Point(1.0, 3.0, 0), Point(3.0, 3.5, 1.57), Point(8.0, 0.0, -1.48)};
+    int target_idx = 0;
+    
+    std::vector<Point> way_points; // return from PRM
+    std::vector<Leg> way_legs; // legs between way points
+    int leg_idx = 0;
+
+    const int STATE_FIND_PATH_TO_TARGET=0, STATE_NAVIGATION_TO_TARGET=1, STATE_TARGET_REACHED=2, STATE_IDLE=3, STATE_INIT=4;
+    int state = STATE_INIT;
+    
+    Point target;
+    nav_msgs::OccupancyGrid inflated_grid;
+
     //Set the loop rate
-    ros::Rate loop_rate(1);    //20Hz update rate
+    ros::Rate loop_rate(30);    //20Hz update rate
 
     while (ros::ok())
     {
     	loop_rate.sleep(); //Maintain the loop rate
     	ros::spinOnce();   //Check for new messages
 
-        Point start, end;
-        start.x = 0;
-        start.y = 0;
-        end.x = 8;
-        end.y = -4;
-        std::vector<Point> way_points;
+        if (state == STATE_INIT) {
+            if (init_pose && init_map) {
+                ROS_WARN("state = INIT");
 
-        nav_msgs::OccupancyGrid inflated_grid;
-        inflate_obstables(occupancy_grid, inflated_grid);
-        prm_find_path(inflated_grid, start, end, way_points);
+                inflate_obstables(occupancy_grid, inflated_grid);
+                map_inflated_pub.publish(inflated_grid);
+                state = STATE_IDLE;
+
+                ROS_WARN("Switching to STATE_IDLE");
+            }
+        }
+        else if (state == STATE_IDLE) {
+            ROS_WARN("state = IDLE");
+
+            if (target_idx < targets.size()) {
+                target = targets[target_idx];
+                target_idx++;
+                state = STATE_FIND_PATH_TO_TARGET;
+
+                ROS_WARN("Switching to STATE_FIND_PATH_TO_TARGET");
+            }
+        }
+        else if (state == STATE_FIND_PATH_TO_TARGET) {
+            ROS_WARN("state = STATE_FIND_PATH_TO_TARGET");
+
+            way_points.clear(); // clear way points list
+            way_legs.clear(); 
+            prm_find_path(inflated_grid, Point(x_est, y_est, yaw_est), target, way_points);
+
+            // create way_points.size() - 1 legs
+            for (int i = 0; i < way_points.size() - 1; i++) {
+                Leg leg;
+                leg.start = way_points[i];
+                leg.end = way_points[i + 1];
+                
+                leg.is_last_leg = false;
+                leg.is_first_leg = false;
+
+                way_legs.push_back(leg);
+            }
+
+            way_legs.front().is_first_leg = true;
+            way_legs.back().is_last_leg = true;
+
+            state = STATE_NAVIGATION_TO_TARGET;
+            ROS_WARN("Switching to STATE_NAVIGATION_TO_TARGET");
+        }
+        else if (state == STATE_NAVIGATION_TO_TARGET) {
+            
+            Point carrot, perp_point;
+            double CARROT_R_DISTANCE = 0.5;
+            double CARROT_WAYLEG_SWITCH_TOL = 0.1;
+
+            Leg &curr_leg = way_legs[leg_idx];
+
+            curr_leg.perp_point_on_leg(Point(x_est, y_est, 0), perp_point);
+
+            // find direction vector of the leg
+            double dir_x = curr_leg.end.x - perp_point.x;
+            double dir_y = curr_leg.end.y - perp_point.y;
+            double dir_mag = sqrt(dir_x * dir_x + dir_y * dir_y);
+            // ROS_INFO("%f, %f, %f", dir_x, dir_y, atan(dir_y/dir_x) * 180 / M_PI);
+            dir_x = dir_x / dir_mag; // normalize direction vector
+            dir_y = dir_y / dir_mag;
+            // ROS_INFO("%f, %f, %f", dir_x, dir_y, atan(dir_y/dir_x) * 180 / M_PI);
+
+            carrot.x = perp_point.x + dir_x * CARROT_R_DISTANCE;
+            carrot.y = perp_point.y + dir_y * CARROT_R_DISTANCE;
+            carrot.th = 0;
+
+            // carrot is always on the end point of the last leg
+            if (!is_between_two_points_on_a_line(perp_point, curr_leg.end, carrot) && curr_leg.is_last_leg) {
+                carrot = curr_leg.end;
+            }
+
+            if (point_dist(perp_point, curr_leg.end) < CARROT_WAYLEG_SWITCH_TOL && !curr_leg.is_last_leg) {
+                leg_idx++;
+            }
+
+            ROS_INFO("Pose:(x=%f,y=%f,th=%f), leg=%d, ", x_est, y_est, yaw_est*180/M_PI, leg_idx);
+
+            // visualization
+            visualization_msgs::Marker carrot_viz, perp_point_viz;
+            geometry_msgs::Point viz_pt;
+            carrot_viz.header.frame_id = "/map";
+            carrot_viz.id = 0;
+            carrot_viz.type = visualization_msgs::Marker::SPHERE_LIST;
+            carrot_viz.action = visualization_msgs::Marker::ADD;
+            carrot_viz.ns = "carrot";
+            carrot_viz.scale.x = 0.1;
+            carrot_viz.scale.y = 0.1;
+            carrot_viz.scale.z = 0.1;
+            carrot_viz.color.r = 1.0;
+            carrot_viz.color.g = 0.4;
+            carrot_viz.color.b = 0.0;
+            carrot_viz.color.a = 1.0;
+
+            perp_point_viz = carrot_viz;
+            perp_point_viz.id = 1;
+            perp_point_viz.ns = "perp_point";
+            perp_point_viz.color.r = 1.0;
+            perp_point_viz.color.g = 1.0;
+
+            viz_pt = carrot.viz();
+            carrot_viz.points.push_back(viz_pt);
+            viz_pt = perp_point.viz();
+            perp_point_viz.points.push_back(viz_pt);
+
+            carrot_pub.publish(carrot_viz);
+            carrot_pub.publish(perp_point_viz);
+
+        }
+        else if (state == STATE_TARGET_REACHED) {
+
+        }      
+        
 
     	// velocity_publisher.publish(vel); // Publish the command velocity
 
 
-        ROS_INFO("Hello");
+        
 
         map_inflated_pub.publish(inflated_grid);
     }
