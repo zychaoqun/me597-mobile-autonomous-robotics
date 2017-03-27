@@ -409,7 +409,7 @@ Visualization Manager:
       Marker Topic: /prm_edges
       Name: Path (Edges)
       Namespaces:
-        {}
+        valid_nodes: true
       Queue Size: 1000
       Value: true
     - Class: rviz/Marker
@@ -417,7 +417,9 @@ Visualization Manager:
       Marker Topic: /prm_nodes
       Name: Milestones (Graph Vertex)
       Namespaces:
-        {}
+        end_node: true
+        start_node: true
+        valid_nodes: true
       Queue Size: 10000
       Value: true
     - Class: rviz/Marker
@@ -425,7 +427,7 @@ Visualization Manager:
       Marker Topic: /prm_path
       Name: Shortest Path
       Namespaces:
-        {}
+        path: true
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -448,7 +450,8 @@ Visualization Manager:
       Marker Topic: /prm_nav_carrot
       Name: Carrot
       Namespaces:
-        {}
+        carrot: true
+        perp_point: true
       Queue Size: 100
       Value: true
   Enabled: true
@@ -483,11 +486,11 @@ Visualization Manager:
         Value: false
       Name: Current View
       Near Clip Distance: 0.01
-      Scale: 52.2402
+      Scale: 79.7961
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 5.58623
-      Y: -2.67809
+      X: 1.87979
+      Y: -0.263171
     Saved: ~
 Window Geometry:
   Displays:

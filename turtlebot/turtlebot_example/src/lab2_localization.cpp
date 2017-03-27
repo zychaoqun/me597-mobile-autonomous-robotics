@@ -127,15 +127,15 @@ int main(int argc, char **argv)
     ros::Publisher pose_pub = n.advertise<geometry_msgs::PoseStamped>("/robot_pose", 1);
     ros::Publisher ips_pub = n.advertise<geometry_msgs::PoseStamped>("/ips_pose", 1);
 
-    int num_particles = 500;
+    int num_particles = 200;
 
     // Q Matrix
     // double Q_std_x = sqrt(0.1); //m
     // double Q_std_y = Q_std_x; 
     // double Q_std_yaw = sqrt(0.05); //rad
-    double Q_std_x = 0.05; //m
+    double Q_std_x = 0.005; //m
     double Q_std_y = Q_std_x; 
-    double Q_std_yaw = 0.09; //rad
+    double Q_std_yaw = 0.01; //rad
 
     // R Matrix
     double R_std_x = 0.1; //m

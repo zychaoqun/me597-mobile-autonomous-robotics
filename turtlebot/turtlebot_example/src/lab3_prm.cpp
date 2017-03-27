@@ -39,9 +39,9 @@ const double OBSTABLE_INFLATION = 0.3; // m
 const int COLLISION_SAMPLE_EVERY = 1;
 const int PRM_N_SAMPLES = 300;
 const int PRM_N_TRY_CLOSEST_NODES = 10;
-const double PRM_GAUSSIAN_STD_DEV = 0.25; // meters
+const double PRM_GAUSSIAN_STD_DEV = 0.1; // meters
 double CARROT_R_DISTANCE = 0.5;
-double CARROT_WAYLEG_SWITCH_TOL = 0.1;
+double CARROT_WAYLEG_SWITCH_TOL = 0.4;
 
 double x_est, y_est, yaw_est;
 
@@ -578,7 +578,7 @@ int main(int argc, char **argv)
     geometry_msgs::Twist vel;
 
     // target locations
-    std::vector<Point> targets = {Point(4.0, 0, 0), Point(8.0, -4.0, 3.14), Point(8.0, 0.0, -1.57)};
+    std::vector<Point> targets = {Point(0, 0, 0), Point(4.0, 0, 0), Point(8.0, -4.0, 3.14), Point(8.0, 0.0, -1.57)};
     // std::vector<Point> targets = {Point(1.0, 3.0, 0), Point(3.0, 3.5, 1.57), Point(8.0, 0.0, -1.48)};
     int target_idx = 0;
     
@@ -682,7 +682,7 @@ int main(int argc, char **argv)
             const double MAX_LINEAR_VEL = 0.2;
             const double P_ANG = 2.0;
             const double P_LIN = 1.0;
-            const double HEAD_ERROR_NO_LINEAR_VEL = 30.0 / 180.0 * M_PI;
+            const double HEAD_ERROR_NO_LINEAR_VEL = 60 / 180.0 * M_PI;
             const double TARGET_REACHED_TOL = 0.15;
 
             double cross_track_error = point_dist(perp_point, Point(pose_x, pose_y, 0));
