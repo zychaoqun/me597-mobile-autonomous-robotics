@@ -40,6 +40,8 @@ const int COLLISION_SAMPLE_EVERY = 1;
 const int PRM_N_SAMPLES = 300;
 const int PRM_N_TRY_CLOSEST_NODES = 10;
 const double PRM_GAUSSIAN_STD_DEV = 0.25; // meters
+double CARROT_R_DISTANCE = 0.5;
+double CARROT_WAYLEG_SWITCH_TOL = 0.1;
 
 double x_est, y_est, yaw_est;
 
@@ -648,8 +650,6 @@ int main(int argc, char **argv)
         else if (state == STATE_NAVIGATION_TO_TARGET) {
             
             Point carrot, perp_point;
-            double CARROT_R_DISTANCE = 0.5;
-            double CARROT_WAYLEG_SWITCH_TOL = 0.1;
 
             Leg &curr_leg = way_legs[leg_idx];
 
@@ -659,10 +659,8 @@ int main(int argc, char **argv)
             double dir_x = curr_leg.end.x - perp_point.x;
             double dir_y = curr_leg.end.y - perp_point.y;
             double dir_mag = sqrt(dir_x * dir_x + dir_y * dir_y);
-            // ROS_INFO("%f, %f, %f", dir_x, dir_y, atan(dir_y/dir_x) * 180 / M_PI);
             dir_x = dir_x / dir_mag; // normalize direction vector
             dir_y = dir_y / dir_mag;
-            // ROS_INFO("%f, %f, %f", dir_x, dir_y, atan(dir_y/dir_x) * 180 / M_PI);
 
             carrot.x = perp_point.x + dir_x * CARROT_R_DISTANCE;
             carrot.y = perp_point.y + dir_y * CARROT_R_DISTANCE;
