@@ -35,13 +35,13 @@ ros::Publisher edges_pub;
 ros::Publisher path_pub;
 nav_msgs::OccupancyGrid occupancy_grid;
 
-const double OBSTABLE_INFLATION = 0.3; // m
+const double OBSTABLE_INFLATION = 0.2; // m
 const int COLLISION_SAMPLE_EVERY = 1;
 const int PRM_N_SAMPLES = 300;
 const int PRM_N_TRY_CLOSEST_NODES = 10;
-const double PRM_GAUSSIAN_STD_DEV = 0.1; // meters
-double CARROT_R_DISTANCE = 0.5;
-double CARROT_WAYLEG_SWITCH_TOL = 0.4;
+const double PRM_GAUSSIAN_STD_DEV = 0.25; // meters
+double CARROT_R_DISTANCE = 0.6;
+double CARROT_WAYLEG_SWITCH_TOL = 0.25;
 
 double x_est, y_est, yaw_est;
 
@@ -338,7 +338,7 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
     edge_base_viz.color.g = 0.5;
     edge_base_viz.color.b = 0.0;
     edge_base_viz.color.a = 0.25;
-    edge_base_viz.scale.x = 0.02;
+    edge_base_viz.scale.x = 0.015;
 
     // add the start and end nodes
     Node *start_node = new Node(), *end_node = new Node();
@@ -552,6 +552,12 @@ bool prm_find_path(const nav_msgs::OccupancyGrid &grid, Point start_pt, Point en
 
     ros::Time toc = ros::Time::now();
     ROS_INFO("PRM Completed in %f seconds", (toc - tic).toSec());
+
+    if (!path_found) {
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -579,7 +585,7 @@ int main(int argc, char **argv)
 
     // target locations
     std::vector<Point> targets = {Point(0, 0, 0), Point(4.0, 0, 0), Point(8.0, -4.0, 3.14), Point(8.0, 0.0, -1.57)};
-    // std::vector<Point> targets = {Point(1.0, 3.0, 0), Point(3.0, 3.5, 1.57), Point(8.0, 0.0, -1.48)};
+    // std::vector<Point> targets = {Point(2.0, 0.5, 0), Point(0, 0, 0), Point(3.5, -2.5, 0)};
     int target_idx = 0;
     
     std::vector<Point> way_points; // return from PRM
@@ -628,7 +634,13 @@ int main(int argc, char **argv)
             way_points.clear(); // clear way points list
             way_legs.clear();
             leg_idx = 0;
-            prm_find_path(inflated_grid, Point(x_est, y_est, yaw_est), target, way_points);
+            bool result = prm_find_path(inflated_grid, Point(x_est, y_est, yaw_est), target, way_points);
+
+            if (!result) {
+                ROS_ERROR("No path found!");
+                state = STATE_IDLE;
+                ROS_WARN("Switching to STATE_IDLE");
+            }
 
             // create way_points.size() - 1 legs
             for (int i = 0; i < way_points.size() - 1; i++) {
@@ -678,12 +690,12 @@ int main(int argc, char **argv)
             }
 
             // ========== P CONTROLS =============
-            const double MAX_ANGULAR_VEL = 1.0;
+            const double MAX_ANGULAR_VEL = 0.5;
             const double MAX_LINEAR_VEL = 0.2;
-            const double P_ANG = 2.0;
-            const double P_LIN = 1.0;
-            const double HEAD_ERROR_NO_LINEAR_VEL = 60 / 180.0 * M_PI;
-            const double TARGET_REACHED_TOL = 0.15;
+            const double P_ANG = 0.5;
+            const double P_LIN = 0.25;
+            const double HEAD_ERROR_NO_LINEAR_VEL = 30 / 180.0 * M_PI;
+            const double TARGET_REACHED_TOL = 0.05;
 
             double cross_track_error = point_dist(perp_point, Point(pose_x, pose_y, 0));
             double dir_carrot_x = carrot.x - pose_x;
